@@ -7,11 +7,12 @@ A single-page web app that counts how many mailboxes (letterboxes) fall inside e
 ## What it does
 
 - **Zones from a KML or KMZ file.** Draw your zones as shapes in Google My Maps or Google Earth, export them, and load the file. Each shape becomes a zone, named after its placemark.
-- **Fetches addresses automatically.** As soon as zones are loaded, the addresses inside them are fetched from OpenStreetMap. Nothing to download or paste.
+- **Fetches addresses automatically.** As soon as zones are loaded, the addresses inside them are fetched. Nothing to download or paste. In NSW they come from the official NSW address register (the source behind G-NAF, updated daily); everywhere else from OpenStreetMap.
+- **Shows how current the data is.** A **Last changed** column gives the typical year each zone's addresses were last updated in the NSW register, and each address's popup shows its own date.
 - **Count per zone and in total.** Mailboxes that sit in two overlapping zones show up in both zone rows but are only counted once in the total.
 - **Filter by type.** Houses, apartments/units and businesses can each be switched on or off. Apartments are off by default.
 - **Map.** Zones and every address are drawn on a street map. Click a dot to see its address and how it was counted.
-- **Remembers your work.** Your zones and filter choices are kept in your browser. Fetched address data is cached for two weeks, so the page opens instantly next time. Use **Refresh address data** to fetch it fresh.
+- **Remembers your work.** Your zones and filter choices are kept in your browser. Fetched address data is cached (NSW for a week, OpenStreetMap for two weeks), so the page opens instantly next time. Use **Refresh address data** to fetch it fresh.
 - **Export.** Copy the table, or download it as CSV.
 
 ## How to use it
@@ -22,18 +23,30 @@ A single-page web app that counts how many mailboxes (letterboxes) fall inside e
 
 You can also use your own address data, under **Use your own address file instead**. It accepts a CSV with latitude/longitude columns (such as a G-NAF extract), GeoJSON, or Overpass JSON. Rows with a value in a `unit`, `flat` or `flat_number` column count as apartments.
 
-## How fetching works
+## Where the addresses come from
 
-Addresses come from the [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API), which serves OpenStreetMap data. The app sends one request covering all your zones. If a server is busy or fails, it tries the next one in this list:
+### Inside NSW: the NSW address register
+
+When your zones are in NSW, addresses come from the [NSW Geocoded Addressing Theme](https://www.data.nsw.gov.au/data/dataset/71c1c645-910e-4e16-8841-a646b47315a3), the state's official address database run by NSW Spatial Services. It is open data, updated daily, and it is where G-NAF gets its NSW addresses. The app queries it directly, 2,000 addresses at a time.
+
+| Type | Rule |
+|---|---|
+| Apartment / unit | A unit address (`8/24-26 Boundary Road`, or starting with Unit, Flat, Apartment) on a site with three or more units. The building's own address isn't counted separately, because each unit is. |
+| House | Any other residential address. A site with only one or two unit addresses (a duplex or granny flat) counts its units as houses. |
+| Business | An address starting with Shop, Suite, Office, Kiosk, Factory, Warehouse, Stall, Showroom or Level, or one OpenStreetMap marks as a business. |
+
+Retired addresses and duplicate records are left out. If the register can't be reached, the app falls back to OpenStreetMap and says so.
+
+### Elsewhere: OpenStreetMap
+
+Outside NSW, addresses come from OpenStreetMap through the [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API). If a server is busy or fails, the app tries the next one in this list:
 
 1. overpass.private.coffee
 2. overpass-api.de
 3. maps.mail.ru
 4. overpass.kumi.systems
 
-If the area is too big for one request (or wider than about 30 km²), the app splits it into roughly 2 × 2 km parts automatically, splitting further if needed, and merges the results without double counting.
-
-## How mailboxes are classified
+If the area is too big for one request (or wider than about 30 km²), it is split into roughly 2 × 2 km parts automatically and merged without double counting.
 
 | Type | Rule |
 |---|---|
@@ -43,7 +56,7 @@ If the area is too big for one request (or wider than about 30 km²), the app sp
 
 ## Accuracy
 
-OpenStreetMap address coverage varies from suburb to suburb. Check the map for streets with no dots before you rely on a count. For a guaranteed-complete count, use a G-NAF extract as the address source.
+In NSW the counts come from the official register, so coverage is complete as of the day you fetch. Its **Last changed** year of 2008 means an address hasn't changed since the register was set up, which is normal for established houses. Outside NSW, OpenStreetMap coverage varies from suburb to suburb, so check the map for streets with no dots before you rely on a count.
 
 ## Running it locally
 

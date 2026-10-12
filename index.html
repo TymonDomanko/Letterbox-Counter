@@ -105,6 +105,7 @@ th:first-child,td:first-child{text-align:left}
 thead th{font-family:var(--display);font-stretch:85%;font-weight:700;text-transform:uppercase;letter-spacing:.05em;font-size:12px;color:var(--muted)}
 td.off{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
 td.count{font-weight:700;font-size:15px}
+td.age{color:var(--muted);font-size:13px}
 tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
 .zname{display:flex;align-items:center;gap:8px}
 .zname i{width:10px;height:10px;border:2px solid var(--zone);border-radius:2px;flex:none}
@@ -140,7 +141,7 @@ tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
 
       <section class="step">
         <h2><span class="n">2</span>Address points</h2>
-        <p>Addresses inside your zones are fetched from OpenStreetMap automatically. A copy is kept for two weeks so the page opens quickly next time.</p>
+        <p>Addresses are fetched automatically. In NSW they come from the official NSW address register, updated daily; elsewhere from OpenStreetMap. A copy is kept for a week so the page opens quickly next time.</p>
         <div class="progress" id="prog" hidden><i id="progBar"></i></div>
         <div class="status" id="addrStatus">Load zones to fetch their addresses.</div>
         <div class="row"><button class="btn sm" id="refreshBtn" type="button">Refresh address data</button></div>
@@ -188,7 +189,7 @@ tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
 
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Zone</th><th>Houses</th><th>Apartments</th><th>Businesses</th><th>Mailboxes</th></tr></thead>
+          <thead><tr><th>Zone</th><th>Houses</th><th>Apartments</th><th>Businesses</th><th>Mailboxes</th><th title="The typical year these addresses were last changed in the NSW address register">Last changed</th></tr></thead>
           <tbody id="tbody"></tbody>
           <tfoot id="tfoot"></tfoot>
         </table>
@@ -201,7 +202,7 @@ tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
           <button class="btn" id="csvBtn" type="button">Export CSV</button>
         </div>
       </div>
-      <p class="note">OpenStreetMap address coverage varies by suburb. Check the map for streets without dots before relying on a count. Units without their own address in the data are counted once per building.</p>
+      <p class="note">Address data: NSW Spatial Services address register (Creative Commons) in NSW, otherwise &copy; OpenStreetMap contributors, whose coverage varies by suburb. "Last changed" is the typical year the addresses were last updated in the register; 2008 means unchanged since the register was set up.</p>
     </main>
   </div>
 </div>
@@ -388,26 +389,87 @@ function tileTouches(t,z){
 /* ---------- counting ---------- */
 function count(){
   const on={house:$("fHouse").checked,apt:$("fApt").checked,biz:$("fBiz").checked};
-  const rows=zones.map(z=>({name:z.name,house:0,apt:0,biz:0}));
+  const rows=zones.map(z=>({name:z.name,house:0,apt:0,biz:0,ages:[]}));const allAges=[];
   const tot={house:0,apt:0,biz:0};let overlap=0;
   for(const r of records){
     r.z=-1;let hits=0;
-    zones.forEach((z,i)=>{if(inZone(r.lon,r.lat,z)){rows[i][r.cls]+=r.w;hits++;if(r.z<0)r.z=i}});
-    if(hits){tot[r.cls]+=r.w;if(hits>1)overlap+=r.w}
+    const aged=on[r.cls]&&r.w>0&&r.updated;
+    zones.forEach((z,i)=>{if(inZone(r.lon,r.lat,z)){rows[i][r.cls]+=r.w;if(aged)rows[i].ages.push(r.updated);hits++;if(r.z<0)r.z=i}});
+    if(hits){tot[r.cls]+=r.w;if(aged)allAges.push(r.updated);if(hits>1)overlap+=r.w}
   }
   const mail=o=>(on.house?o.house:0)+(on.apt?o.apt:0)+(on.biz?o.biz:0);
-  rows.forEach(r=>r.total=mail(r));tot.total=mail(tot);
+  const medYear=a=>{if(!a.length)return "—";a.sort((x,y)=>x-y);return String(new Date(a[Math.floor(a.length/2)]).getFullYear())};
+  rows.forEach(r=>{r.total=mail(r);r.changed=medYear(r.ages)});tot.total=mail(tot);tot.changed=medYear(allAges);
   lastRows=rows;
   $("nHouse").textContent=tot.house.toLocaleString();$("nApt").textContent=tot.apt.toLocaleString();$("nBiz").textContent=tot.biz.toLocaleString();
   const td=(v,k)=>`<td class="${on[k]?"":"off"}">${v.toLocaleString()}</td>`;
   const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-  $("tbody").innerHTML=rows.map(r=>`<tr><td><span class="zname"><i></i>${esc(r.name)}</span></td>${td(r.house,"house")}${td(r.apt,"apt")}${td(r.biz,"biz")}<td class="count">${r.total.toLocaleString()}</td></tr>`).join("")||`<tr><td colspan="5">No zones loaded.</td></tr>`;
-  $("tfoot").innerHTML=`<tr><td>Total${overlap?" (each address once)":""}</td>${td(tot.house,"house")}${td(tot.apt,"apt")}${td(tot.biz,"biz")}<td class="count">${tot.total.toLocaleString()}</td></tr>`;
+  $("tbody").innerHTML=rows.map(r=>`<tr><td><span class="zname"><i></i>${esc(r.name)}</span></td>${td(r.house,"house")}${td(r.apt,"apt")}${td(r.biz,"biz")}<td class="count">${r.total.toLocaleString()}</td><td class="age">${r.changed}</td></tr>`).join("")||`<tr><td colspan="6">No zones loaded.</td></tr>`;
+  $("tfoot").innerHTML=`<tr><td>Total${overlap?" (each address once)":""}</td>${td(tot.house,"house")}${td(tot.apt,"apt")}${td(tot.biz,"biz")}<td class="count">${tot.total.toLocaleString()}</td><td class="age">${tot.changed}</td></tr>`;
   $("bigTotal").textContent=tot.total.toLocaleString();
   const parts=[on.house&&"houses",on.apt&&"apartments",on.biz&&"businesses"].filter(Boolean);
   $("bigWhat").textContent=`${parts.length?parts.join(" + "):"nothing selected"} across ${zones.length} zone${zones.length===1?"":"s"}`+(on.apt?"":" · apartments excluded");
   $("overlapNote").textContent=overlap?`Some zones overlap. ${overlap.toLocaleString()} mailboxes sit in more than one zone; they appear in each zone row but only once in the total.`:"";
   drawMap(on);
+}
+
+/* ---------- NSW address register (Spatial Services) ---------- */
+const NSW_URL="https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Geocoded_Addressing_Theme_multiCRS/MapServer/1/query";
+const NSW_BOX=[140.99,-37.51,153.65,-28.15];
+function inNSW(b){return b[0]>=NSW_BOX[0]&&b[2]<=NSW_BOX[2]&&b[1]>=NSW_BOX[1]&&b[3]<=NSW_BOX[3]}
+async function nswRequest(params){
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),60000);
+  try{
+    const res=await fetch(NSW_URL+"?"+new URLSearchParams(params),{signal:ctrl.signal});
+    if(!res.ok)throw new Error("NSW register answered "+res.status);
+    const j=await res.json();
+    if(j.error)throw new Error("NSW register: "+(j.error.message||"error"));
+    return j;
+  }catch(e){throw e.name==="AbortError"?new Error("NSW register timed out"):e}
+  finally{clearTimeout(timer)}
+}
+// every current address point inside a box, 2,000 at a time
+async function nswFetchBox(b,onProgress){
+  const base={geometry:b.map(v=>v.toFixed(6)).join(","),geometryType:"esriGeometryEnvelope",inSR:"4326",spatialRel:"esriSpatialRelIntersects",where:"1=1",f:"json"};
+  const {count=0}=await nswRequest({...base,returnCountOnly:"true"});
+  const out=[];let offset=0;
+  while(offset<count+2000){
+    const j=await nswRequest({...base,outFields:"address,housenumber,principaladdresssiteoid,lastupdate,enddate",returnGeometry:"true",outSR:"4326",geometryPrecision:"6",orderByFields:"OBJECTID",resultOffset:String(offset),resultRecordCount:"2000"});
+    const f=j.features||[];
+    for(const x of f){if(x.geometry)out.push([x.geometry.x,x.geometry.y,x.attributes.address||"",x.attributes.housenumber||"",x.attributes.principaladdresssiteoid,x.attributes.lastupdate,x.attributes.enddate])}
+    onProgress&&onProgress(out.length,count);
+    if(!f.length||!j.exceededTransferLimit)break;
+    offset+=f.length;
+  }
+  return out;
+}
+const titleCase=s=>s.toLowerCase().replace(/(^|[\s/-])([a-z])/g,(m,a,b)=>a+b.toUpperCase());
+const NSW_BIZ=/^(SHOP|SUITE|OFFICE|KIOSK|FACTORY|WAREHOUSE|STALL|SHOWROOM|LEVEL)\b/;
+const NSW_UNIT=/^(UNIT|FLAT|APARTMENT|APT|VILLA|TOWNHOUSE)\b/;
+// rows: [lon,lat,address,housenumber,site,lastupdate,enddate]
+function fromNSW(rows,bizKeys){
+  const now=Date.now(),seen=new Set(),cur=[];
+  for(const r of rows){if(r[6]&&r[6]<now)continue;const a=r[2].trim().toUpperCase();if(!a||seen.has(a))continue;seen.add(a);cur.push(r)}
+  const isUnit=r=>/\//.test(r[3])||NSW_UNIT.test(r[2].toUpperCase());
+  const unitsPerSite=new Map();
+  for(const r of cur)if(isUnit(r)&&!NSW_BIZ.test(r[2].toUpperCase()))unitsPerSite.set(r[4],(unitsPerSite.get(r[4])||0)+1);
+  const out=[];
+  for(const r of cur){
+    const A=r[2].toUpperCase(),label=titleCase(r[2]),updated=r[5]||null,base={lat:r[1],lon:r[0],label,updated};
+    if(NSW_BIZ.test(A)){out.push({...base,cls:"biz",w:1});continue}
+    const units=unitsPerSite.get(r[4])||0;
+    if(isUnit(r)){out.push({...base,cls:units>=3?"apt":"house",w:1,note:units<3?"Dual occupancy, counted as a house":""});continue}
+    if(units){out.push({...base,cls:units>=3?"apt":"house",w:0,note:units>=3?`Building with ${units} units; each unit is counted`:"Its units are counted instead"});continue}
+    if(bizKeys.some(k=>A.startsWith(k+" ")||A.startsWith(k+"\u0000"))){out.push({...base,cls:"biz",w:1,note:"Business per OpenStreetMap"});continue}
+    out.push({...base,cls:"house",w:1});
+  }
+  return out;
+}
+// "12 SMITH STREET" keys for addresses OpenStreetMap marks as businesses
+function osmBizKeys(jsons){
+  const keys=new Set();
+  for(const j of jsons)for(const e of j.elements||[]){const t=e.tags||{};if(t["addr:housenumber"]&&t["addr:street"]&&isBiz(t))keys.add((t["addr:housenumber"]+" "+t["addr:street"]).toUpperCase().replace(/\s+/g," "))}
+  return [...keys];
 }
 
 /* ---------- fetching addresses from OpenStreetMap ---------- */
@@ -453,14 +515,13 @@ const store={
   async set(k,v){try{const db=await this.open();await new Promise(res=>{const tx=db.transaction("q","readwrite");tx.objectStore("q").put(v,k);tx.oncomplete=tx.onerror=()=>res()})}catch(e){}}
 };
 const seenRec=new Set();
-function addRecords(recs){let n=0;for(const r of recs){const k=r.cls+"|"+r.lat.toFixed(6)+"|"+r.lon.toFixed(6)+"|"+r.w;if(seenRec.has(k))continue;seenRec.add(k);records.push(r);n++}return n}
+function addRecords(recs){let n=0;for(const r of recs){const k=r.cls+"|"+r.lat.toFixed(6)+"|"+r.lon.toFixed(6)+"|"+r.w+"|"+(r.label||"");if(seenRec.has(k))continue;seenRec.add(k);records.push(r);n++}return n}
 function progress(f){const p=$("prog");if(f==null){p.hidden=true;return}p.hidden=false;$("progBar").style.width=Math.round(Math.min(1,Math.max(0.04,f))*100)+"%"}
-let fetchRun=0;
-async function fetchAddresses(force){
-  if(!baseZones.length)return;
-  const run=++fetchRun;
-  $("refreshBtn").setAttribute("aria-disabled","true");
-  const {parts,km2,all}=areaParts(mergeBBox(baseZones.map(z=>z.bbox)),baseZones);
+let fetchRun=0,dataSource="";
+const NSW_CACHE_DAYS=7;
+const shortDate=t=>new Date(t).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"});
+// OpenStreetMap: one request for the whole area, or ~2 km parts when that's too big
+async function fetchOSM(all,parts,km2,force,run,report){
   let oldest=Date.now(),allCached=true;
   const getOne=async q=>{
     if(!force){const c=await store.get(q);if(c&&c.j&&Date.now()-c.t<CACHE_DAYS*864e5){oldest=Math.min(oldest,c.t);return c.j}}
@@ -471,37 +532,61 @@ async function fetchAddresses(force){
     catch(e){if(depth>=2)throw e;const mx=(b[0]+b[2])/2,my=(b[1]+b[3])/2,out=[];
       for(const t of [[b[0],b[1],mx,my],[mx,b[1],b[2],my],[b[0],my,mx,b[3]],[mx,my,b[2],b[3]]])out.push(...await getTile(t,depth+1));return out}
   };
-  const results=[];
-  try{
-    progress(0.04);setStatus("addrStatus","Fetching addresses for your zones…");
-    const wq=buildQuery(all);
-    let useTiles=km2>30;
-    if(!useTiles&&!force){const c=await store.get(wq);if(c&&c.tiles)useTiles=true}
-    if(!useTiles){
-      try{results.push(await getOne(wq))}
-      catch(e){useTiles=true;await store.set(wq,{t:Date.now(),tiles:true})}
+  const jsons=[];
+  const wq=buildQuery(all);
+  let useTiles=km2>30;
+  if(!useTiles&&!force){const c=await store.get(wq);if(c&&c.tiles)useTiles=true}
+  if(!useTiles){
+    try{jsons.push(await getOne(wq))}
+    catch(e){useTiles=true;await store.set(wq,{t:Date.now(),tiles:true})}
+  }
+  if(useTiles){
+    for(let i=0;i<parts.length;i++){
+      if(run!==fetchRun)return {jsons:[],allCached,oldest};
+      if(report){setStatus("addrStatus",`Fetching addresses, part ${i+1} of ${parts.length}…`);progress((i+0.3)/parts.length)}
+      jsons.push(...await getTile(parts[i],0));
     }
-    if(useTiles){
-      for(let i=0;i<parts.length;i++){
-        if(run!==fetchRun)return;
-        setStatus("addrStatus",`Fetching addresses, part ${i+1} of ${parts.length}…`);progress((i+0.3)/parts.length);
-        results.push(...await getTile(parts[i],0));
-      }
-    }
-  }catch(e){
-    if(run!==fetchRun)return;
-    progress(null);$("refreshBtn").removeAttribute("aria-disabled");
-    setStatus("addrStatus",`Couldn't fetch the addresses (${e.message}). The data servers may be busy; try Refresh in a few minutes, or load your own address file below.`,"err");
+  }
+  return {jsons,allCached,oldest};
+}
+// NSW register first (official, updated daily); OpenStreetMap fills in businesses, or everything outside NSW
+async function fetchAddresses(force){
+  if(!baseZones.length)return;
+  const run=++fetchRun;
+  $("refreshBtn").setAttribute("aria-disabled","true");
+  const zb=mergeBBox(baseZones.map(z=>z.bbox));
+  const {parts,km2,all}=areaParts(zb,baseZones);
+  const useNSW=inNSW(zb);
+  progress(0.04);setStatus("addrStatus",useNSW?"Fetching from the NSW address register…":"Fetching addresses for your zones…");
+  const nswP=useNSW?(async()=>{
+    const key="nsw:"+all.map(v=>v.toFixed(5)).join(",");
+    if(!force){const c=await store.get(key);if(c&&c.rows&&Date.now()-c.t<NSW_CACHE_DAYS*864e5)return {rows:c.rows,t:c.t,cached:true}}
+    const rows=await nswFetchBox(all,(n,tot)=>{if(run===fetchRun){progress(tot?n/tot:0.5);setStatus("addrStatus",`Fetching from the NSW address register… ${n.toLocaleString()} of ${tot.toLocaleString()}`)}});
+    const t=Date.now();await store.set(key,{t,rows});return {rows,t,cached:false};
+  })():Promise.resolve(null);
+  const [nsw,osm]=await Promise.allSettled([nswP,fetchOSM(all,parts,km2,force,run,!useNSW)]);
+  if(run!==fetchRun)return;
+  progress(null);$("refreshBtn").removeAttribute("aria-disabled");
+  records=[];seenRec.clear();
+  const osmOk=osm.status==="fulfilled";
+  if(nsw.status==="fulfilled"&&nsw.value){
+    addRecords(fromNSW(nsw.value.rows,osmOk?osmBizKeys(osm.value.jsons):[]));
+    dataSource="nsw";count();
+    const inside=records.filter(r=>r.z>=0).length;
+    const when=nsw.value.cached?`saved copy from ${shortDate(nsw.value.t)}`:"current as of today";
+    setStatus("addrStatus",`${inside.toLocaleString()} addresses inside your zones, from the NSW address register (${when}).`+(osmOk?" Businesses identified from OpenStreetMap.":" Business details couldn't be fetched right now, so businesses show as houses or units."),inside?"ok":"err");
     return;
   }
-  if(run!==fetchRun)return;
-  records=[];seenRec.clear();
-  for(const j of results)addRecords(fromOverpass(j));
-  progress(null);$("refreshBtn").removeAttribute("aria-disabled");
-  count();
-  const inside=records.filter(r=>r.z>=0).length;
-  const when=allCached?` · saved copy from ${new Date(oldest).toLocaleDateString(undefined,{day:"numeric",month:"short"})}`:"";
-  setStatus("addrStatus",`${inside.toLocaleString()} addresses inside your zones (from OpenStreetMap)${when}`,inside?"ok":"err");
+  if(osmOk){
+    for(const j of osm.value.jsons)addRecords(fromOverpass(j));
+    dataSource="osm";count();
+    const inside=records.filter(r=>r.z>=0).length;
+    const when=osm.value.allCached?` · saved copy from ${shortDate(osm.value.oldest)}`:"";
+    const nswNote=useNSW?` The NSW address register couldn't be reached (${nsw.reason&&nsw.reason.message||"no answer"}); try Refresh later for official data.`:"";
+    setStatus("addrStatus",`${inside.toLocaleString()} addresses inside your zones, from OpenStreetMap${when}.${nswNote}`,inside&&!useNSW?"ok":"err");
+    return;
+  }
+  setStatus("addrStatus",`Couldn't fetch the addresses (${(osm.reason&&osm.reason.message)||"no answer"}). The data servers may be busy; try Refresh in a few minutes, or load your own address file below.`,"err");
 }
 
 /* ---------- map ---------- */
@@ -544,7 +629,7 @@ function drawMap(on){
   for(const r of records){
     const active=r.z>=0&&on[r.cls];
     const m=L.circleMarker([r.lat,r.lon],{renderer:canvasR,radius:r.w>1?7:4.5,color:ring,weight:active?1:0,fillColor:col[r.cls],fillOpacity:active?.95:.22,opacity:active?1:0});
-    m.bindPopup(()=>`<strong>${esc(r.label||"Address")}</strong><br>${CLS_NAME[r.cls]}${r.w>1?` · ${r.w} mailboxes`:r.w===0?" · counted with its building":""}${r.z<0?"<br><em>Outside your zones</em>":on[r.cls]?"":"<br><em>Not counted (filtered out)</em>"}`);
+    m.bindPopup(()=>`<strong>${esc(r.label||"Address")}</strong><br>${CLS_NAME[r.cls]}${r.w>1?` · ${r.w} mailboxes`:r.w===0&&!r.note?" · counted with its building":""}${r.note?`<br>${esc(r.note)}`:""}${r.updated?`<br><span style="opacity:.75">Last changed in the NSW register: ${new Date(r.updated).toLocaleDateString(undefined,{month:"short",year:"numeric"})}</span>`:""}${r.z<0?"<br><em>Outside your zones</em>":on[r.cls]?"":"<br><em>Not counted (filtered out)</em>"}`);
     pointLayer.addLayer(m);
   }
 }
@@ -588,7 +673,7 @@ async function handleZone(file){
 async function handleAddr(files){
   files=Array.from(files||[]);if(!files.length)return;
   fetchRun++;progress(null);$("refreshBtn").removeAttribute("aria-disabled");
-  records=[];seenRec.clear();
+  records=[];seenRec.clear();dataSource="file";
   const errs=[],ok=[];
   for(const file of files){
     setStatus("addrStatus","Reading "+file.name+"…");
@@ -618,8 +703,8 @@ $("forgetZones").addEventListener("click",()=>{try{localStorage.removeItem(SAVE_
 function tableCSV(){
   const on={house:$("fHouse").checked,apt:$("fApt").checked,biz:$("fBiz").checked};
   const q=s=>/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
-  const lines=["Zone,Houses,Apartments,Businesses,Mailboxes"];
-  lastRows.forEach(r=>lines.push([q(r.name),r.house,r.apt,r.biz,r.total].join(",")));
+  const lines=["Zone,Houses,Apartments,Businesses,Mailboxes,Last changed (typical year)"];
+  lastRows.forEach(r=>lines.push([q(r.name),r.house,r.apt,r.biz,r.total,r.changed].join(",")));
   lines.push("Total,"+[$("nHouse").textContent,$("nApt").textContent,$("nBiz").textContent,$("bigTotal").textContent].map(s=>s.replace(/,/g,"")).join(","));
   lines.push(`Counted: ${[on.house&&"houses",on.apt&&"apartments",on.biz&&"businesses"].filter(Boolean).join(" + ")}`);
   return lines.join("\n");
