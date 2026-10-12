@@ -189,7 +189,7 @@ tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
 
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Zone</th><th>Houses</th><th>Apartments</th><th>Businesses</th><th>Mailboxes</th><th title="The typical year these addresses were last changed in the NSW address register">Last changed</th></tr></thead>
+          <thead><tr><th>Zone</th><th>Houses</th><th>Apartments</th><th>Businesses</th><th>Mailboxes</th><th title="When the most recently added address in this zone entered the NSW address register">Newest address</th></tr></thead>
           <tbody id="tbody"></tbody>
           <tfoot id="tfoot"></tfoot>
         </table>
@@ -202,7 +202,7 @@ tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
           <button class="btn" id="csvBtn" type="button">Export CSV</button>
         </div>
       </div>
-      <p class="note">Address data: NSW Spatial Services address register (Creative Commons) in NSW, otherwise &copy; OpenStreetMap contributors, whose coverage varies by suburb. "Last changed" is the typical year the addresses were last updated in the register; 2008 means unchanged since the register was set up.</p>
+      <p class="note">Address data: NSW Spatial Services address register (Creative Commons) in NSW, otherwise &copy; OpenStreetMap contributors, whose coverage varies by suburb. "Newest address" is when the most recently added address in each zone entered the register, so recent building shows up there.</p>
     </main>
   </div>
 </div>
@@ -389,17 +389,17 @@ function tileTouches(t,z){
 /* ---------- counting ---------- */
 function count(){
   const on={house:$("fHouse").checked,apt:$("fApt").checked,biz:$("fBiz").checked};
-  const rows=zones.map(z=>({name:z.name,house:0,apt:0,biz:0,ages:[]}));const allAges=[];
-  const tot={house:0,apt:0,biz:0};let overlap=0;
+  const rows=zones.map(z=>({name:z.name,house:0,apt:0,biz:0,newest:0}));
+  const tot={house:0,apt:0,biz:0,newest:0};let overlap=0;
   for(const r of records){
     r.z=-1;let hits=0;
-    const aged=on[r.cls]&&r.w>0&&r.updated;
-    zones.forEach((z,i)=>{if(inZone(r.lon,r.lat,z)){rows[i][r.cls]+=r.w;if(aged)rows[i].ages.push(r.updated);hits++;if(r.z<0)r.z=i}});
-    if(hits){tot[r.cls]+=r.w;if(aged)allAges.push(r.updated);if(hits>1)overlap+=r.w}
+    const aged=on[r.cls]&&r.w>0&&r.added;
+    zones.forEach((z,i)=>{if(inZone(r.lon,r.lat,z)){rows[i][r.cls]+=r.w;if(aged&&r.added>rows[i].newest)rows[i].newest=r.added;hits++;if(r.z<0)r.z=i}});
+    if(hits){tot[r.cls]+=r.w;if(aged&&r.added>tot.newest)tot.newest=r.added;if(hits>1)overlap+=r.w}
   }
   const mail=o=>(on.house?o.house:0)+(on.apt?o.apt:0)+(on.biz?o.biz:0);
-  const medYear=a=>{if(!a.length)return "—";a.sort((x,y)=>x-y);return String(new Date(a[Math.floor(a.length/2)]).getFullYear())};
-  rows.forEach(r=>{r.total=mail(r);r.changed=medYear(r.ages)});tot.total=mail(tot);tot.changed=medYear(allAges);
+  const monthYear=t=>t?new Date(t).toLocaleDateString(undefined,{month:"short",year:"numeric"}):"—";
+  rows.forEach(r=>{r.total=mail(r);r.changed=monthYear(r.newest)});tot.total=mail(tot);tot.changed=monthYear(tot.newest);
   lastRows=rows;
   $("nHouse").textContent=tot.house.toLocaleString();$("nApt").textContent=tot.apt.toLocaleString();$("nBiz").textContent=tot.biz.toLocaleString();
   const td=(v,k)=>`<td class="${on[k]?"":"off"}">${v.toLocaleString()}</td>`;
@@ -434,9 +434,9 @@ async function nswFetchBox(b,onProgress){
   const {count=0}=await nswRequest({...base,returnCountOnly:"true"});
   const out=[];let offset=0;
   while(offset<count+2000){
-    const j=await nswRequest({...base,outFields:"address,housenumber,principaladdresssiteoid,lastupdate,enddate",returnGeometry:"true",outSR:"4326",geometryPrecision:"6",orderByFields:"OBJECTID",resultOffset:String(offset),resultRecordCount:"2000"});
+    const j=await nswRequest({...base,outFields:"address,housenumber,principaladdresssiteoid,lastupdate,enddate,startdate",returnGeometry:"true",outSR:"4326",geometryPrecision:"6",orderByFields:"OBJECTID",resultOffset:String(offset),resultRecordCount:"2000"});
     const f=j.features||[];
-    for(const x of f){if(x.geometry)out.push([x.geometry.x,x.geometry.y,x.attributes.address||"",x.attributes.housenumber||"",x.attributes.principaladdresssiteoid,x.attributes.lastupdate,x.attributes.enddate])}
+    for(const x of f){if(x.geometry)out.push([x.geometry.x,x.geometry.y,x.attributes.address||"",x.attributes.housenumber||"",x.attributes.principaladdresssiteoid,x.attributes.lastupdate,x.attributes.enddate,x.attributes.startdate])}
     onProgress&&onProgress(out.length,count);
     if(!f.length||!j.exceededTransferLimit)break;
     offset+=f.length;
@@ -446,7 +446,7 @@ async function nswFetchBox(b,onProgress){
 const titleCase=s=>s.toLowerCase().replace(/(^|[\s/-])([a-z])/g,(m,a,b)=>a+b.toUpperCase());
 const NSW_BIZ=/^(SHOP|SUITE|OFFICE|KIOSK|FACTORY|WAREHOUSE|STALL|SHOWROOM|LEVEL)\b/;
 const NSW_UNIT=/^(UNIT|FLAT|APARTMENT|APT|VILLA|TOWNHOUSE)\b/;
-// rows: [lon,lat,address,housenumber,site,lastupdate,enddate]
+// rows: [lon,lat,address,housenumber,site,lastupdate,enddate,startdate]
 function fromNSW(rows,bizKeys){
   const now=Date.now(),seen=new Set(),cur=[];
   for(const r of rows){if(r[6]&&r[6]<now)continue;const a=r[2].trim().toUpperCase();if(!a||seen.has(a))continue;seen.add(a);cur.push(r)}
@@ -455,7 +455,7 @@ function fromNSW(rows,bizKeys){
   for(const r of cur)if(isUnit(r)&&!NSW_BIZ.test(r[2].toUpperCase()))unitsPerSite.set(r[4],(unitsPerSite.get(r[4])||0)+1);
   const out=[];
   for(const r of cur){
-    const A=r[2].toUpperCase(),label=titleCase(r[2]),updated=r[5]||null,base={lat:r[1],lon:r[0],label,updated};
+    const A=r[2].toUpperCase(),label=titleCase(r[2]),updated=r[5]||null,added=r[7]||null,base={lat:r[1],lon:r[0],label,updated,added};
     if(NSW_BIZ.test(A)){out.push({...base,cls:"biz",w:1});continue}
     const units=unitsPerSite.get(r[4])||0;
     if(isUnit(r)){out.push({...base,cls:units>=3?"apt":"house",w:1,note:units<3?"Dual occupancy, counted as a house":""});continue}
@@ -559,7 +559,7 @@ async function fetchAddresses(force){
   const useNSW=inNSW(zb);
   progress(0.04);setStatus("addrStatus",useNSW?"Fetching from the NSW address register…":"Fetching addresses for your zones…");
   const nswP=useNSW?(async()=>{
-    const key="nsw:"+all.map(v=>v.toFixed(5)).join(",");
+    const key="nsw2:"+all.map(v=>v.toFixed(5)).join(",");
     if(!force){const c=await store.get(key);if(c&&c.rows&&Date.now()-c.t<NSW_CACHE_DAYS*864e5)return {rows:c.rows,t:c.t,cached:true}}
     const rows=await nswFetchBox(all,(n,tot)=>{if(run===fetchRun){progress(tot?n/tot:0.5);setStatus("addrStatus",`Fetching from the NSW address register… ${n.toLocaleString()} of ${tot.toLocaleString()}`)}});
     const t=Date.now();await store.set(key,{t,rows});return {rows,t,cached:false};
@@ -608,6 +608,7 @@ function setTiles(){
   // no key-free dark map exists, so dark mode inverts the standard tiles
   $("map").classList.toggle("dark-tiles",isDark());
 }
+const REGISTER_START=Date.UTC(2008,4,1); // the register was loaded in April 2008
 const CLS_NAME={house:"House",apt:"Apartment / unit",biz:"Business"};
 function drawMap(on){
   $("mapEmpty").hidden=!!zones.length;
@@ -629,7 +630,7 @@ function drawMap(on){
   for(const r of records){
     const active=r.z>=0&&on[r.cls];
     const m=L.circleMarker([r.lat,r.lon],{renderer:canvasR,radius:r.w>1?7:4.5,color:ring,weight:active?1:0,fillColor:col[r.cls],fillOpacity:active?.95:.22,opacity:active?1:0});
-    m.bindPopup(()=>`<strong>${esc(r.label||"Address")}</strong><br>${CLS_NAME[r.cls]}${r.w>1?` · ${r.w} mailboxes`:r.w===0&&!r.note?" · counted with its building":""}${r.note?`<br>${esc(r.note)}`:""}${r.updated?`<br><span style="opacity:.75">Last changed in the NSW register: ${new Date(r.updated).toLocaleDateString(undefined,{month:"short",year:"numeric"})}</span>`:""}${r.z<0?"<br><em>Outside your zones</em>":on[r.cls]?"":"<br><em>Not counted (filtered out)</em>"}`);
+    m.bindPopup(()=>`<strong>${esc(r.label||"Address")}</strong><br>${CLS_NAME[r.cls]}${r.w>1?` · ${r.w} mailboxes`:r.w===0&&!r.note?" · counted with its building":""}${r.note?`<br>${esc(r.note)}`:""}${r.added?`<br><span style="opacity:.75">${r.added<REGISTER_START?"In the NSW register since it began (2008)":"Added to the NSW register: "+new Date(r.added).toLocaleDateString(undefined,{month:"short",year:"numeric"})}${r.updated&&r.updated-r.added>864e5?" · last changed "+new Date(r.updated).toLocaleDateString(undefined,{month:"short",year:"numeric"}):""}</span>`:""}${r.z<0?"<br><em>Outside your zones</em>":on[r.cls]?"":"<br><em>Not counted (filtered out)</em>"}`);
     pointLayer.addLayer(m);
   }
 }
@@ -703,7 +704,7 @@ $("forgetZones").addEventListener("click",()=>{try{localStorage.removeItem(SAVE_
 function tableCSV(){
   const on={house:$("fHouse").checked,apt:$("fApt").checked,biz:$("fBiz").checked};
   const q=s=>/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
-  const lines=["Zone,Houses,Apartments,Businesses,Mailboxes,Last changed (typical year)"];
+  const lines=["Zone,Houses,Apartments,Businesses,Mailboxes,Newest address"];
   lastRows.forEach(r=>lines.push([q(r.name),r.house,r.apt,r.biz,r.total,r.changed].join(",")));
   lines.push("Total,"+[$("nHouse").textContent,$("nApt").textContent,$("nBiz").textContent,$("bigTotal").textContent].map(s=>s.replace(/,/g,"")).join(","));
   lines.push(`Counted: ${[on.house&&"houses",on.apt&&"apartments",on.biz&&"businesses"].filter(Boolean).join(" + ")}`);
