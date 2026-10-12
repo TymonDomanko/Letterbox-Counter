@@ -47,7 +47,7 @@ OpenStreetMap address coverage varies from suburb to suburb. Check the map for s
 
 ## Running it locally
 
-It's a single HTML file with no build step. Serve the folder with any static web server (for example `python3 -m http.server`) and open it in a browser. Map tiles come from CARTO, using OpenStreetMap data.
+It's a single HTML file with no build step. Serve the folder with any static web server (for example `python3 -m http.server`) and open it in a browser. Map tiles come from OpenStreetMap (no API key needed).
 
 ## Licence
 
