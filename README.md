@@ -8,11 +8,11 @@ A single-page web app that counts how many mailboxes (letterboxes) fall inside e
 
 - **Zones from a KML or KMZ file.** Draw your zones as shapes in Google My Maps or Google Earth, export them, and load the file. Each shape becomes a zone, named after its placemark.
 - **Fetches addresses automatically.** As soon as zones are loaded, the addresses inside them are fetched. Nothing to download or paste. In NSW they come from the official NSW address register (the source behind G-NAF, updated daily); everywhere else from OpenStreetMap.
-- **Shows how current the data is.** A **Newest address** column shows when the most recently added address in each zone entered the NSW register, and each address's popup shows when it was added and last changed.
+- **Shows how current the data is.** A **Latest update** column shows the most recent date any address in each zone was added or changed in the NSW register, and each address's popup shows when it was added and last changed.
 - **Count per zone and in total.** Mailboxes that sit in two overlapping zones show up in both zone rows but are only counted once in the total.
 - **Filter by type.** Houses, apartments/units and businesses can each be switched on or off. Apartments are off by default.
 - **Map.** Zones and every address are drawn on a street map. Click a dot to see its address and how it was counted.
-- **Remembers your work.** Your zones and filter choices are kept in your browser. Fetched address data is cached (NSW for a week, OpenStreetMap for two weeks), so the page opens instantly next time. Use **Refresh address data** to fetch it fresh.
+- **Remembers your work.** Your zones and filter choices are kept in your browser. Fetched address data is cached (NSW for a day, since the register updates daily; OpenStreetMap for two weeks), so the page opens instantly next time. Use **Refresh address data** to fetch it fresh.
 - **Export.** Copy the table, or download it as CSV.
 
 ## How to use it
@@ -56,7 +56,7 @@ If the area is too big for one request (or wider than about 30 km²), it is spli
 
 ## Accuracy
 
-In NSW the counts come from the official register, so coverage is complete as of the day you fetch. Addresses that existed when the register was set up in April 2008 all carry that date; the **Newest address** column shows the most recent addition in each zone, which is where new building appears. Outside NSW, OpenStreetMap coverage varies from suburb to suburb, so check the map for streets with no dots before you rely on a count.
+In NSW the counts come from the official register, so coverage is complete as of the day you fetch. Addresses that existed when the register was set up in April 2008 all carry that date; the **Latest update** column shows the most recent addition or change in each zone, which is where new building appears. Outside NSW, OpenStreetMap coverage varies from suburb to suburb, so check the map for streets with no dots before you rely on a count.
 
 ## Running it locally
 

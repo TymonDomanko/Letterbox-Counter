@@ -141,7 +141,7 @@ tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
 
       <section class="step">
         <h2><span class="n">2</span>Address points</h2>
-        <p>Addresses are fetched automatically. In NSW they come from the official NSW address register, updated daily; elsewhere from OpenStreetMap. A copy is kept for a week so the page opens quickly next time.</p>
+        <p>Addresses are fetched automatically. In NSW they come from the official NSW address register, updated daily; elsewhere from OpenStreetMap. In NSW the data is fetched fresh each day; a copy is kept until then so the page opens quickly.</p>
         <div class="progress" id="prog" hidden><i id="progBar"></i></div>
         <div class="status" id="addrStatus">Load zones to fetch their addresses.</div>
         <div class="row"><button class="btn sm" id="refreshBtn" type="button">Refresh address data</button></div>
@@ -189,7 +189,7 @@ tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
 
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Zone</th><th>Houses</th><th>Apartments</th><th>Businesses</th><th>Mailboxes</th><th title="When the most recently added address in this zone entered the NSW address register">Newest address</th></tr></thead>
+          <thead><tr><th>Zone</th><th>Houses</th><th>Apartments</th><th>Businesses</th><th>Mailboxes</th><th title="The most recent date any counted address in this zone was added or changed in the NSW address register">Latest update</th></tr></thead>
           <tbody id="tbody"></tbody>
           <tfoot id="tfoot"></tfoot>
         </table>
@@ -202,7 +202,7 @@ tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
           <button class="btn" id="csvBtn" type="button">Export CSV</button>
         </div>
       </div>
-      <p class="note">Address data: NSW Spatial Services address register (Creative Commons) in NSW, otherwise &copy; OpenStreetMap contributors, whose coverage varies by suburb. "Newest address" is when the most recently added address in each zone entered the register, so recent building shows up there.</p>
+      <p class="note">Address data: NSW Spatial Services address register (Creative Commons) in NSW, otherwise &copy; OpenStreetMap contributors, whose coverage varies by suburb. "Latest update" is the most recent date any address in the zone was added or changed in the register, so recent building shows up there. Data older than a day is fetched fresh automatically.</p>
     </main>
   </div>
 </div>
@@ -393,9 +393,9 @@ function count(){
   const tot={house:0,apt:0,biz:0,newest:0};let overlap=0;
   for(const r of records){
     r.z=-1;let hits=0;
-    const aged=on[r.cls]&&r.w>0&&r.added;
-    zones.forEach((z,i)=>{if(inZone(r.lon,r.lat,z)){rows[i][r.cls]+=r.w;if(aged&&r.added>rows[i].newest)rows[i].newest=r.added;hits++;if(r.z<0)r.z=i}});
-    if(hits){tot[r.cls]+=r.w;if(aged&&r.added>tot.newest)tot.newest=r.added;if(hits>1)overlap+=r.w}
+    const latest=Math.max(r.updated||0,r.added||0),aged=on[r.cls]&&r.w>0&&latest>0;
+    zones.forEach((z,i)=>{if(inZone(r.lon,r.lat,z)){rows[i][r.cls]+=r.w;if(aged&&latest>rows[i].newest)rows[i].newest=latest;hits++;if(r.z<0)r.z=i}});
+    if(hits){tot[r.cls]+=r.w;if(aged&&latest>tot.newest)tot.newest=latest;if(hits>1)overlap+=r.w}
   }
   const mail=o=>(on.house?o.house:0)+(on.apt?o.apt:0)+(on.biz?o.biz:0);
   const monthYear=t=>t?new Date(t).toLocaleDateString(undefined,{month:"short",year:"numeric"}):"—";
@@ -518,7 +518,7 @@ const seenRec=new Set();
 function addRecords(recs){let n=0;for(const r of recs){const k=r.cls+"|"+r.lat.toFixed(6)+"|"+r.lon.toFixed(6)+"|"+r.w+"|"+(r.label||"");if(seenRec.has(k))continue;seenRec.add(k);records.push(r);n++}return n}
 function progress(f){const p=$("prog");if(f==null){p.hidden=true;return}p.hidden=false;$("progBar").style.width=Math.round(Math.min(1,Math.max(0.04,f))*100)+"%"}
 let fetchRun=0,dataSource="";
-const NSW_CACHE_DAYS=7;
+const NSW_CACHE_DAYS=1; // the register updates daily, so never reuse a copy older than a day
 const shortDate=t=>new Date(t).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"});
 // OpenStreetMap: one request for the whole area, or ~2 km parts when that's too big
 async function fetchOSM(all,parts,km2,force,run,report){
@@ -704,7 +704,7 @@ $("forgetZones").addEventListener("click",()=>{try{localStorage.removeItem(SAVE_
 function tableCSV(){
   const on={house:$("fHouse").checked,apt:$("fApt").checked,biz:$("fBiz").checked};
   const q=s=>/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
-  const lines=["Zone,Houses,Apartments,Businesses,Mailboxes,Newest address"];
+  const lines=["Zone,Houses,Apartments,Businesses,Mailboxes,Latest update"];
   lastRows.forEach(r=>lines.push([q(r.name),r.house,r.apt,r.biz,r.total,r.changed].join(",")));
   lines.push("Total,"+[$("nHouse").textContent,$("nApt").textContent,$("nBiz").textContent,$("bigTotal").textContent].map(s=>s.replace(/,/g,"")).join(","));
   lines.push(`Counted: ${[on.house&&"houses",on.apt&&"apartments",on.biz&&"businesses"].filter(Boolean).join(" + ")}`);
