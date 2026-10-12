@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Count the mailboxes inside delivery zones from a KML/KMZ file, with apartments and businesses filterable.">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Letterbox Count</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+/* Layout: control rail (zones → addresses → filters) beside a working area of zone map + count sheet; stacks on phones */
+:root{
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#18202b; --muted:#5b6675; --line:#d9dee5;
+  --accent:#c4361f; --accent-ink:#ffffff; --accent-soft:#f8e3de;
+  --house:#1f7a6d; --apt:#7a5aa6; --biz:#b77712; --zone:#24456b; --zone-fill:rgba(36,69,107,.07);
+  --warn-bg:#fff4dc; --warn-ink:#6b4a00;
+  --land:#eef0ea; --road:#ffffff; --road-case:#cfd3cc; --road-major:#f6d98f; --park:#d3e8c8; --water:#b9d6ea; --rail:#9aa0a6; --label:#4a5360;
+  --display:"Archivo","Arial Narrow",Arial,sans-serif;
+  --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11161d; --surface:#18202a; --ink:#e7ecf2; --muted:#98a3b2; --line:#2b3542;
+  --accent:#ef6a52; --accent-ink:#1a0d0a; --accent-soft:#3a201b;
+  --house:#4cc3b0; --apt:#b495e0; --biz:#e8a93f; --zone:#8fb4e0; --zone-fill:rgba(143,180,224,.08);
+  --warn-bg:#33290f; --warn-ink:#f1d48a;
+  --land:#1b222b; --road:#3a4553; --road-case:#141a21; --road-major:#6b5a2e; --park:#1f3326; --water:#1c3346; --rail:#5c6570; --label:#aeb8c5; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161d; --surface:#18202a; --ink:#e7ecf2; --muted:#98a3b2; --line:#2b3542;
+  --accent:#ef6a52; --accent-ink:#1a0d0a; --accent-soft:#3a201b;
+  --house:#4cc3b0; --apt:#b495e0; --biz:#e8a93f; --zone:#8fb4e0; --zone-fill:rgba(143,180,224,.08);
+  --warn-bg:#33290f; --warn-ink:#f1d48a;
+  --land:#1b222b; --road:#3a4553; --road-case:#141a21; --road-major:#6b5a2e; --park:#1f3326; --water:#1c3346; --rail:#5c6570; --label:#aeb8c5; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 40px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;padding-block-end:16px;border-bottom:2px solid var(--ink);margin-bottom:20px}
+h1{font-family:var(--display);font-stretch:72%;font-weight:800;font-size:clamp(30px,5vw,46px);line-height:1;margin:0;letter-spacing:-.01em;text-transform:uppercase}
+h1 span{color:var(--accent)}
+.tag{color:var(--muted);max-width:46ch;margin:0;font-size:14px}
+.grid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.rail{display:flex;flex-direction:column;gap:14px}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.step h2{font-family:var(--display);font-stretch:85%;font-weight:700;font-size:15px;text-transform:uppercase;letter-spacing:.06em;margin:0;display:flex;align-items:center;gap:8px}
+.step h2 .n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--bg);font-size:12px;letter-spacing:0}
+.step p{margin:0;color:var(--muted);font-size:13.5px}
+.drop{border:1.5px dashed var(--line);border-radius:6px;padding:14px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;font-size:13.5px;color:var(--muted)}
+.drop:hover,.drop.over,.drop:focus-within{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.drop strong{color:var(--ink);display:block;font-weight:600}
+.drop input{position:absolute;width:1px;height:1px;opacity:0}
+.status{font-family:var(--mono);font-size:12px;color:var(--muted);word-break:break-word}
+.status.ok{color:var(--house)} .status.err{color:var(--accent)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 13.5px var(--body);padding:9px 12px;border-radius:5px;border:1px solid var(--ink);background:var(--ink);color:var(--bg);text-decoration:none;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn:hover{filter:brightness(1.1)} .btn.ghost:hover{border-color:var(--ink)}
+.btn:focus-visible,.drop:focus-within,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+details{font-size:13px} summary{cursor:pointer;color:var(--muted)}
+pre.q{font-family:var(--mono);font-size:11.5px;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px;overflow-x:auto;margin:8px 0 0;white-space:pre}
+.srv{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);font-weight:600}
+.srv select{font:500 14px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:8px}
+.reqlist{display:flex;flex-direction:column;gap:10px}
+.req{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:6px}
+.req .head{display:flex;justify-content:space-between;gap:8px;font-size:13.5px}
+.req .head b{font-weight:600;min-width:0;overflow-wrap:anywhere}
+.req .head span{color:var(--muted);font-family:var(--mono);font-size:12px;white-space:nowrap}
+.parts{display:flex;flex-wrap:wrap;gap:6px}
+.part{display:inline-flex}
+.part a,.part button{font:600 12.5px var(--body);padding:6px 9px;border:1px solid var(--ink);text-decoration:none;cursor:pointer}
+.part a{background:var(--ink);color:var(--bg);border-radius:5px 0 0 5px}
+.part a.done{background:var(--house);border-color:var(--house)}
+.part button{background:transparent;color:var(--muted);border-color:var(--line);border-left:0;border-radius:0 5px 5px 0}
+.part button:hover{color:var(--ink)}
+.btn.sm{padding:6px 10px;font-size:12.5px}
+textarea{width:100%;font:12px var(--mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:8px;resize:vertical}
+a.btn.done{background:var(--house);border-color:var(--house)}
+.filters{display:flex;flex-direction:column;gap:8px}
+.chk{display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer}
+.chk input{width:18px;height:18px;accent-color:var(--accent)}
+.sw{width:10px;height:10px;border-radius:2px;flex:none}
+.sw.h{background:var(--house)} .sw.a{background:var(--apt)} .sw.b{background:var(--biz)}
+.chk small{color:var(--muted);margin-left:auto;font-family:var(--mono);font-size:12px}
+
+.main{display:flex;flex-direction:column;gap:16px;min-width:0}
+.banner{background:var(--warn-bg);color:var(--warn-ink);border-radius:6px;padding:10px 14px;font-size:13.5px}
+.totalbar{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--accent);border-radius:6px;padding:14px 18px}
+.totalbar .big{font-family:var(--display);font-stretch:75%;font-weight:800;font-size:clamp(40px,7vw,60px);line-height:1;font-variant-numeric:tabular-nums}
+.totalbar .lbl{font-family:var(--display);font-stretch:85%;font-weight:600;text-transform:uppercase;letter-spacing:.06em;font-size:13px;color:var(--muted)}
+.totalbar .what{color:var(--muted);font-size:13.5px;flex-basis:100%}
+.mapbox{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px;min-width:0}
+.mapwrap{position:relative}
+canvas{display:block;width:100%;height:clamp(340px,62vh,680px);max-width:100%;border-radius:4px;touch-action:none;cursor:grab;background:var(--land)}
+canvas.drag{cursor:grabbing}
+canvas:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mapctl{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:4px}
+.mapctl button{width:36px;height:36px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:5px;font:700 18px var(--body);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.mapctl button.fit{font-size:11px;font-weight:600}
+.mapctl button:hover{border-color:var(--ink)}
+.maphint{position:absolute;left:10px;bottom:10px;font-size:11.5px;color:var(--label);background:color-mix(in srgb,var(--surface) 80%,transparent);padding:3px 7px;border-radius:4px;pointer-events:none}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--muted);padding:6px 6px 2px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.tablewrap{background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:520px}
+th,td{padding:10px 14px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+thead th{font-family:var(--display);font-stretch:85%;font-weight:700;text-transform:uppercase;letter-spacing:.05em;font-size:12px;color:var(--muted)}
+td.off{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
+td.count{font-weight:700;font-size:15px}
+tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
+.zname{display:flex;align-items:center;gap:8px}
+.zname i{width:10px;height:10px;border:2px solid var(--zone);border-radius:2px;flex:none}
+.foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.note{font-size:12.5px;color:var(--muted);max-width:70ch;margin:0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Letterbox <span>Count</span></h1>
+    <p class="tag">Count the mailboxes inside each delivery zone. Upload zones from Google Earth or My Maps, load the address points, and filter out apartments.</p>
+  </header>
+
+  <div class="grid">
+    <aside class="rail">
+      <section class="step">
+        <h2><span class="n">1</span>Zones</h2>
+        <p>KML or KMZ with one polygon per zone. The placemark name becomes the zone name.</p>
+        <label class="drop" id="zoneDrop">
+          <input type="file" id="zoneFile" accept=".kml,.kmz">
+          <strong>Choose KML / KMZ</strong>or drop it here
+        </label>
+        <div class="status" id="zoneStatus">Example zones loaded</div>
+      </section>
+
+      <section class="step">
+        <h2><span class="n">2</span>Address points</h2>
+        <p>Download the addresses for your zones from OpenStreetMap, then load the file here.</p>
+        <label class="srv" for="server">Data server
+          <select id="server">
+            <option value="https://overpass.private.coffee/api/interpreter">private.coffee (recommended)</option>
+            <option value="https://maps.mail.ru/osm/tools/overpass/api/interpreter">mail.ru</option>
+            <option value="https://overpass.kumi.systems/api/interpreter">kumi.systems</option>
+          </select>
+        </label>
+        <a class="btn" id="dlAll" href="#" target="_blank" rel="noopener noreferrer">Download addresses for all zones</a>
+        <p id="areaNote" style="font-size:12.5px"></p>
+        <p style="font-size:12.5px">A tab opens with the data as text (it can take a minute). Press Ctrl/Cmd + A then Ctrl/Cmd + C in that tab, and paste it into the box below. Saving it as a file and loading that also works.</p>
+        <textarea id="pasteBox" rows="3" placeholder="Paste the data here"></textarea>
+        <div class="row"><button class="btn sm" id="pasteLoad" type="button">Load pasted data</button></div>
+        <details id="splitBox">
+          <summary>Download timing out? Get it in smaller parts</summary>
+          <p style="margin-top:6px">Each part covers about 2 × 2 km. Load every part; overlaps are only counted once.</p>
+          <div id="reqList" class="parts" style="margin-top:8px"></div>
+        </details>
+        <label class="drop" id="addrDrop">
+          <input type="file" id="addrFile" accept=".json,.geojson,.csv,.txt,.psv" multiple>
+          <strong>Choose address files</strong>Select several at once; they're merged
+        </label>
+        <div class="status" id="addrStatus">Example addresses loaded</div>
+        <div class="row"><button class="btn ghost sm" id="clearAddr" type="button">Clear address data</button></div>
+        <details>
+          <summary>How the download works</summary>
+          <p style="margin-top:6px">The download button runs this query on the chosen server. Large areas can take a minute or two. You can also paste the query into <a href="https://overpass-turbo.eu/" target="_blank" rel="noopener">overpass-turbo.eu</a> to see it on a map, then use Export → raw OSM data.</p>
+          <pre class="q" id="queryText"></pre>
+          <p style="margin-top:6px">A CSV also works, such as a G-NAF extract. It needs latitude and longitude columns. Rows with a value in a <code>flat</code>, <code>unit</code> or <code>flat_number</code> column count as apartments.</p>
+        </details>
+      </section>
+
+      <section class="step">
+        <h2><span class="n">3</span>Count these</h2>
+        <div class="filters">
+          <label class="chk"><input type="checkbox" id="fHouse" checked><span class="sw h"></span>Houses<small id="nHouse">0</small></label>
+          <label class="chk"><input type="checkbox" id="fApt"><span class="sw a"></span>Apartments &amp; units<small id="nApt">0</small></label>
+          <label class="chk"><input type="checkbox" id="fBiz" checked><span class="sw b"></span>Businesses<small id="nBiz">0</small></label>
+        </div>
+        <p>Apartments count each unit where the building's unit count is known, otherwise one per address.</p>
+      </section>
+    </aside>
+
+    <main class="main">
+      <div class="banner" id="demoBanner">Showing example zones and addresses. Upload your own zones to start.</div>
+
+      <div class="totalbar">
+        <span class="lbl">Total mailboxes</span>
+        <span class="big" id="bigTotal">0</span>
+        <span class="what" id="bigWhat"></span>
+      </div>
+
+      <div class="mapbox">
+        <div class="mapwrap">
+          <canvas id="map" tabindex="0" aria-label="Map of zones and address points. Drag to pan, scroll or pinch to zoom."></canvas>
+          <div class="mapctl">
+            <button type="button" id="zIn" aria-label="Zoom in">+</button>
+            <button type="button" id="zOut" aria-label="Zoom out">−</button>
+            <button type="button" id="zFit" class="fit" aria-label="Fit all zones">Fit</button>
+          </div>
+          <div class="maphint" id="mapHint">Drag to pan · scroll or pinch to zoom</div>
+        </div>
+        <div class="legend">
+          <span><i class="sw h"></i>House</span>
+          <span><i class="sw a"></i>Apartment</span>
+          <span><i class="sw b"></i>Business</span>
+          <span style="opacity:.6">Faded points are filtered out or outside every zone. Squares are buildings with several units.</span>
+        </div>
+      </div>
+
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Zone</th><th>Houses</th><th>Apartments</th><th>Businesses</th><th>Mailboxes</th></tr></thead>
+          <tbody id="tbody"></tbody>
+          <tfoot id="tfoot"></tfoot>
+        </table>
+      </div>
+
+      <div class="foot">
+        <p class="note" id="overlapNote"></p>
+        <div class="row">
+          <button class="btn ghost" id="copyBtn" type="button">Copy table</button>
+          <button class="btn" id="csvBtn" type="button">Export CSV</button>
+        </div>
+      </div>
+      <p class="note">OpenStreetMap address coverage varies by suburb. Check the map for gaps before relying on a count. Units without their own address in the data are counted once per building.</p>
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+const $=id=>document.getElementById(id);
+const APT_BUILDINGS=/^(apartments|flats|dormitory)$/i;
+const BIZ_BUILDINGS=/^(commercial|retail|office|industrial|warehouse|supermarket|school|church|hospital|hotel|kiosk|civic|public|government|university|college|train_station|fire_station|service)$/i;
+const BIZ_KEYS=["shop","amenity","office","craft","healthcare","tourism","leisure","club"];
+
+let zones=[];        // {name, polys:[[outer,...holes]], bbox}
+let records=[];      // {lat,lon,cls:'house'|'apt'|'biz',w}
+let demo=true;
+let lastRows=[];
+
+/* ---------- geometry ---------- */
+function ringBBox(r){let a=[Infinity,Infinity,-Infinity,-Infinity];for(const[x,y]of r){if(x<a[0])a[0]=x;if(y<a[1])a[1]=y;if(x>a[2])a[2]=x;if(y>a[3])a[3]=y}return a}
+function inRing(x,y,r){let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const[xi,yi]=r[i],[xj,yj]=r[j];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))c=!c}return c}
+function inPoly(x,y,p){if(!inRing(x,y,p[0]))return false;for(let k=1;k<p.length;k++)if(inRing(x,y,p[k]))return false;return true}
+function inZone(x,y,z){const b=z.bbox;if(x<b[0]||x>b[2]||y<b[1]||y>b[3])return false;return z.polys.some(p=>inPoly(x,y,p))}
+function centroid(r){let x=0,y=0;for(const p of r){x+=p[0];y+=p[1]}return[x/r.length,y/r.length]}
+function mergeBBox(bs){return bs.reduce((a,b)=>[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[2],b[2]),Math.max(a[3],b[3])],[Infinity,Infinity,-Infinity,-Infinity])}
+
+/* ---------- KML / KMZ ---------- */
+function parseCoords(t){return t.trim().split(/\s+/).map(s=>s.split(",").map(Number)).filter(c=>c.length>=2&&isFinite(c[0])&&isFinite(c[1])).map(c=>[c[0],c[1]])}
+function byTag(el,tag){return Array.from(el.getElementsByTagNameNS("*",tag))}
+function parseKML(text){
+  const doc=new DOMParser().parseFromString(text,"application/xml");
+  if(doc.getElementsByTagName("parsererror").length)throw new Error("That file isn't valid KML.");
+  const out=[];
+  byTag(doc,"Placemark").forEach((pm,i)=>{
+    const polys=[];
+    byTag(pm,"Polygon").forEach(pg=>{
+      const ob=byTag(pg,"outerBoundaryIs")[0];if(!ob)return;
+      const outer=parseCoords((byTag(ob,"coordinates")[0]||{}).textContent||"");
+      if(outer.length<3)return;
+      const holes=byTag(pg,"innerBoundaryIs").map(ib=>parseCoords((byTag(ib,"coordinates")[0]||{}).textContent||"")).filter(h=>h.length>=3);
+      polys.push([outer,...holes]);
+    });
+    if(!polys.length){ // closed LineString drawn as a zone outline
+      byTag(pm,"LineString").forEach(ls=>{const c=parseCoords((byTag(ls,"coordinates")[0]||{}).textContent||"");if(c.length>=4){const a=c[0],b=c[c.length-1];if(Math.abs(a[0]-b[0])<1e-6&&Math.abs(a[1]-b[1])<1e-6)polys.push([c])}});
+    }
+    if(!polys.length)return;
+    const nm=pm.getElementsByTagNameNS("*","name")[0];
+    const name=(nm&&nm.parentNode===pm&&nm.textContent.trim())||"Zone "+(out.length+1);
+    out.push({name,polys,bbox:mergeBBox(polys.map(p=>ringBBox(p[0])))});
+  });
+  if(!out.length)throw new Error("No polygons found. Draw each zone as a shape (polygon), not a line or pin.");
+  return out;
+}
+async function readZoneFile(file){
+  if(/\.kmz$/i.test(file.name)){
+    if(!window.JSZip)throw new Error("KMZ support didn't load. Try a .kml export instead.");
+    const zip=await JSZip.loadAsync(file);
+    const entry=Object.values(zip.files).find(f=>/\.kml$/i.test(f.name));
+    if(!entry)throw new Error("No .kml found inside that KMZ.");
+    return parseKML(await entry.async("string"));
+  }
+  return parseKML(await file.text());
+}
+
+/* ---------- address data ---------- */
+function isBiz(t){if(t.building&&BIZ_BUILDINGS.test(t.building))return true;return BIZ_KEYS.some(k=>t[k]&&t[k]!=="no")}
+function flatsOf(t){const v=parseInt(t["building:flats"]||t["addr:flats"]&&!/[-;,]/.test(t["addr:flats"])&&t["addr:flats"],10);if(v>0&&v<2000)return v;
+  const r=(t["addr:flats"]||"").match(/^(\d+)\s*-\s*(\d+)$/);if(r){const n=+r[2]-+r[1]+1;if(n>0&&n<2000)return n}return 0}
+
+// features: {lat,lon,tags,ring|null}
+function classifyOSM(features){
+  const apts=[],addrs=[];
+  for(const f of features){
+    const t=f.tags||{};
+    if(t.building&&APT_BUILDINGS.test(t.building)){apts.push({...f,flats:flatsOf(t),inside:0});continue}
+    if(t["addr:housenumber"])addrs.push(f);
+  }
+  for(const a of apts)a.bbox=a.ring?ringBBox(a.ring):null;
+  const seen=new Set(),out=[];
+  for(const f of addrs){
+    const t=f.tags;
+    const key=[t["addr:unit"]||"",t["addr:housenumber"],t["addr:street"]||(f.lat.toFixed(4)+","+f.lon.toFixed(4))].join("|").toLowerCase().replace(/\s+/g," ");
+    if(seen.has(key))continue;seen.add(key);
+    if(isBiz(t)){out.push({lat:f.lat,lon:f.lon,cls:"biz",w:1});continue}
+    let host=null;
+    for(const a of apts){if(a.bbox&&f.lon>=a.bbox[0]&&f.lon<=a.bbox[2]&&f.lat>=a.bbox[1]&&f.lat<=a.bbox[3]&&inRing(f.lon,f.lat,a.ring)){host=a;break}}
+    const unitish=!!t["addr:unit"]||/\//.test(t["addr:housenumber"]);
+    if(host){host.inside++;out.push({lat:f.lat,lon:f.lon,cls:"apt",w:host.flats?0:1});continue}
+    if(unitish){out.push({lat:f.lat,lon:f.lon,cls:"apt",w:1});continue}
+    const fl=flatsOf(t);
+    if(fl>1){out.push({lat:f.lat,lon:f.lon,cls:"apt",w:fl});continue}
+    out.push({lat:f.lat,lon:f.lon,cls:"house",w:1});
+  }
+  for(const a of apts){
+    const w=a.flats?a.flats:(a.inside?0:1);
+    out.push({lat:a.lat,lon:a.lon,cls:"apt",w});
+  }
+  return out;
+}
+/* ---------- base map (streets, parks, water, rail) ---------- */
+let basemap={roads:[],areas:[]};const baseSeen=new Set();
+function resetBase(){basemap={roads:[],areas:[]};baseSeen.clear()}
+const MAJOR=/^(motorway|trunk|primary|secondary)(_link)?$/;
+function baseKind(t){
+  if(t["addr:housenumber"]||t.building)return null;
+  if(t.highway)return MAJOR.test(t.highway)?"major":/^(tertiary|tertiary_link)$/.test(t.highway)?"mid":t.highway==="service"?"service":"minor";
+  if(t.railway==="rail")return "rail";
+  if(t.leisure==="park")return "park";
+  if(t.natural==="water")return "water";
+  return null;
+}
+function addBase(id,kind,t,lines){
+  if(id&&baseSeen.has(id))return;if(id)baseSeen.add(id);
+  if(kind==="park"||kind==="water"){for(const r of lines)if(r.length>=3)basemap.areas.push({kind,ring:r,bbox:ringBBox(r)})}
+  else for(const r of lines)if(r.length>=2)basemap.roads.push({kind,name:t.name||"",pts:r,bbox:ringBBox(r)});
+}
+function fromOverpass(j){
+  const feats=[];
+  for(const e of j.elements||[]){
+    const bk=baseKind(e.tags||{});
+    if(bk){
+      let lines=[];
+      if(e.geometry)lines=[e.geometry.filter(Boolean).map(p=>[p.lon,p.lat])];
+      else if(e.members)lines=e.members.filter(m=>m.geometry&&(m.role==="outer"||m.role===""||bk!=="park")).map(m=>m.geometry.filter(Boolean).map(p=>[p.lon,p.lat]));
+      addBase(e.type+e.id,bk,e.tags,lines);continue;
+    }
+    if(e.type==="node"&&e.lat!=null)feats.push({lat:e.lat,lon:e.lon,tags:e.tags||{},ring:null});
+    else if(e.geometry&&e.geometry.length){const ring=e.geometry.filter(Boolean).map(p=>[p.lon,p.lat]);const[x,y]=centroid(ring);feats.push({lat:y,lon:x,tags:e.tags||{},ring:ring.length>=3?ring:null})}
+    else if(e.center)feats.push({lat:e.center.lat,lon:e.center.lon,tags:e.tags||{},ring:null});
+    else if(e.bounds)feats.push({lat:(e.bounds.minlat+e.bounds.maxlat)/2,lon:(e.bounds.minlon+e.bounds.maxlon)/2,tags:e.tags||{},ring:null});
+  }
+  return classifyOSM(feats);
+}
+function fromGeoJSON(j){
+  const feats=[];
+  for(const f of j.features||[]){
+    const g=f.geometry;if(!g)continue;
+    const p=f.properties||{};const tags=p.tags&&typeof p.tags==="object"?p.tags:p;
+    const bk=baseKind(tags);
+    if(bk){
+      const c=g.type==="LineString"?[g.coordinates]:g.type==="MultiLineString"?g.coordinates:g.type==="Polygon"?[g.coordinates[0]]:g.type==="MultiPolygon"?g.coordinates.map(x=>x[0]):[];
+      addBase(p["@id"]||p.id||f.id,bk,tags,c);continue;
+    }
+    let ring=null,pt=null;
+    if(g.type==="Point")pt=g.coordinates;
+    else if(g.type==="Polygon"){ring=g.coordinates[0];pt=centroid(ring)}
+    else if(g.type==="MultiPolygon"){ring=g.coordinates[0][0];pt=centroid(ring)}
+    else if(g.type==="LineString"){pt=centroid(g.coordinates)}
+    if(pt)feats.push({lat:pt[1],lon:pt[0],tags,ring});
+  }
+  return classifyOSM(feats);
+}
+function splitLine(line,d){const out=[];let cur="",q=false;for(let i=0;i<line.length;i++){const c=line[i];if(q){if(c==='"'){if(line[i+1]==='"'){cur+='"';i++}else q=false}else cur+=c}else if(c==='"')q=true;else if(c===d){out.push(cur);cur=""}else cur+=c}out.push(cur);return out}
+function fromCSV(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  if(lines.length<2)throw new Error("The CSV has no rows.");
+  const d=[",","|","\t",";"].sort((a,b)=>lines[0].split(b).length-lines[0].split(a).length)[0];
+  const h=splitLine(lines[0],d).map(s=>s.trim().toLowerCase());
+  const find=names=>h.findIndex(x=>names.includes(x));
+  const iLat=find(["lat","latitude","y"]),iLon=find(["lon","lng","long","longitude","x"]);
+  if(iLat<0||iLon<0)throw new Error("Couldn't find latitude and longitude columns in the CSV.");
+  const iUnit=find(["unit","flat","flat_number","unit_number","flat_no","unit_no","addr:unit"]);
+  const iType=find(["type","category","class","property_type"]);
+  const iKey=find(["address","full_address","address_detail_pid","gnaf_pid","id"]);
+  const seen=new Set(),out=[];
+  for(let r=1;r<lines.length;r++){
+    const c=splitLine(lines[r],d);const lat=parseFloat(c[iLat]),lon=parseFloat(c[iLon]);
+    if(!isFinite(lat)||!isFinite(lon))continue;
+    if(iKey>=0){const k=(c[iKey]||"").trim().toLowerCase();if(k){if(seen.has(k))continue;seen.add(k)}}
+    const typ=iType>=0?(c[iType]||"").toLowerCase():"";
+    let cls="house";
+    if((iUnit>=0&&(c[iUnit]||"").trim())||/apart|unit|flat/.test(typ))cls="apt";
+    else if(/business|commercial|shop|office|retail|industrial/.test(typ))cls="biz";
+    out.push({lat,lon,cls,w:1});
+  }
+  return out;
+}
+// a browser "Save page" of a JSON result wraps it in HTML; pull the JSON back out
+function unwrapHTML(text){
+  try{
+    const d=new DOMParser().parseFromString(text,"text/html");
+    const t=(d.body&&d.body.textContent)||"";
+    const i=t.indexOf("{"),j=t.lastIndexOf("}");
+    if(i>=0&&j>i)return t.slice(i,j+1);
+  }catch(e){}
+  return text;
+}
+async function readAddrFile(file){
+  let text=await file.text();
+  if(/^\s*</.test(text)&&!/^\s*<\?xml[\s\S]{0,200}<osm/i.test(text)){
+    if(/runtime error|too busy|rate_limited|Too Many Requests/i.test(text))throw new Error("That's an error page from the server, not data. Try again or pick another server.");
+    text=unwrapHTML(text);
+  }
+  const trimmed=text.trimStart();
+  if(trimmed[0]==="{"){
+    let j;try{j=JSON.parse(text)}catch(e){throw new Error("That JSON file couldn't be read. If you saved it from the browser, save as raw data rather than a web page.")}
+    if(j.remark&&!(j.elements||[]).length)throw new Error("Overpass returned an error: "+String(j.remark).slice(0,160));
+    if(Array.isArray(j.elements))return fromOverpass(j);
+    if(j.type==="FeatureCollection")return fromGeoJSON(j);
+    throw new Error("JSON format not recognised. Use Overpass JSON or GeoJSON.");
+  }
+  if(trimmed[0]==="<")throw new Error("That looks like a web page or XML, not address data. Save the Overpass result as .json.");
+  return fromCSV(text);
+}
+
+/* ---------- query links ---------- */
+function buildQuery(b){
+  const f=v=>v.toFixed(5);
+  return `[out:json][timeout:120][bbox:${f(b[1])},${f(b[0])},${f(b[3])},${f(b[2])}];
+nwr["building"~"^(apartments|flats|dormitory)$"]->.apt;
+.apt out geom qt;
+(nwr["addr:housenumber"]; - .apt;);
+out center tags qt;
+(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|pedestrian|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"];way["railway"="rail"];nwr["leisure"="park"];nwr["natural"="water"];);
+out geom qt;`;
+}
+// split an area into ~2 km tiles, keeping only tiles that touch a zone
+function areaParts(bbox,zs){
+  const pad=0.0008,b=[bbox[0]-pad,bbox[1]-pad,bbox[2]+pad,bbox[3]+pad];
+  const k=Math.cos((b[1]+b[3])/2*Math.PI/180);
+  const wKm=(b[2]-b[0])*111.32*k,hKm=(b[3]-b[1])*110.57;
+  const nx=Math.max(1,Math.ceil(wKm/2)),ny=Math.max(1,Math.ceil(hKm/2));
+  const dx=(b[2]-b[0])/nx,dy=(b[3]-b[1])/ny,out=[];
+  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
+    const t=[b[0]+i*dx,b[1]+j*dy,b[0]+(i+1)*dx,b[1]+(j+1)*dy];
+    if(nx*ny===1||zs.some(z=>tileTouches(t,z)))out.push(t);
+  }
+  return {parts:out,km2:wKm*hKm,all:b};
+}
+function tileTouches(t,z){
+  // sample a grid inside the tile, plus any zone vertex inside the tile
+  for(let a=0;a<=4;a++)for(let c=0;c<=4;c++)if(inZone(t[0]+(t[2]-t[0])*a/4,t[1]+(t[3]-t[1])*c/4,z))return true;
+  return z.polys.some(p=>p[0].some(([x,y])=>x>=t[0]&&x<=t[2]&&y>=t[1]&&y<=t[3]));
+}
+const doneParts=new Set();
+function updateQuery(){
+  const list=$("reqList");
+  if(!baseZones.length){list.innerHTML="";$("dlAll").setAttribute("aria-disabled","true");$("areaNote").textContent="";return}
+  $("dlAll").removeAttribute("aria-disabled");
+  const srv=$("server").value;
+  const {parts,km2,all}=areaParts(mergeBBox(baseZones.map(z=>z.bbox)),baseZones);
+  const qAll=buildQuery(all);
+  $("dlAll").href=srv+"?data="+encodeURIComponent(qAll);
+  $("dlAll").classList.toggle("done",doneParts.has("all"));
+  $("areaNote").textContent=`One request covering about ${km2<10?km2.toFixed(1):Math.round(km2)} km² around your ${baseZones.length} zone${baseZones.length>1?"s":""}.`+(km2>60?" That's a large area; if it times out, use the smaller parts below.":"");
+  partQueries=[{id:"all",q:qAll}];
+  list.innerHTML=parts.map((t,pi)=>{
+    const q=buildQuery(t),id="p"+pi;partQueries.push({id,q});
+    return `<span class="part"><a href="${srv}?data=${encodeURIComponent(q)}" target="_blank" rel="noopener noreferrer" data-id="${id}" class="${doneParts.has(id)?"done":""}">Part ${pi+1}</a><button type="button" data-copy="${id}" aria-label="Copy query for part ${pi+1}">copy</button></span>`;
+  }).join("");
+  $("queryText").textContent=qAll;
+}
+let partQueries=[];
+
+/* ---------- counting ---------- */
+function count(){
+  const on={house:$("fHouse").checked,apt:$("fApt").checked,biz:$("fBiz").checked};
+  const rows=zones.map(z=>({name:z.name,house:0,apt:0,biz:0}));
+  const tot={house:0,apt:0,biz:0};let overlap=0;
+  for(const r of records){
+    r.z=-1;let hits=0;
+    zones.forEach((z,i)=>{if(inZone(r.lon,r.lat,z)){rows[i][r.cls]+=r.w;hits++;if(r.z<0)r.z=i}});
+    if(hits){tot[r.cls]+=r.w;if(hits>1)overlap+=r.w}
+  }
+  const mail=o=>(on.house?o.house:0)+(on.apt?o.apt:0)+(on.biz?o.biz:0);
+  rows.forEach(r=>r.total=mail(r));tot.total=mail(tot);
+  lastRows=rows;
+  $("nHouse").textContent=tot.house.toLocaleString();$("nApt").textContent=tot.apt.toLocaleString();$("nBiz").textContent=tot.biz.toLocaleString();
+  const td=(v,k)=>`<td class="${on[k]?"":"off"}">${v.toLocaleString()}</td>`;
+  const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  $("tbody").innerHTML=rows.map(r=>`<tr><td><span class="zname"><i></i>${esc(r.name)}</span></td>${td(r.house,"house")}${td(r.apt,"apt")}${td(r.biz,"biz")}<td class="count">${r.total.toLocaleString()}</td></tr>`).join("")||`<tr><td colspan="5">No zones loaded.</td></tr>`;
+  $("tfoot").innerHTML=`<tr><td>Total${overlap?" (each address once)":""}</td>${td(tot.house,"house")}${td(tot.apt,"apt")}${td(tot.biz,"biz")}<td class="count">${tot.total.toLocaleString()}</td></tr>`;
+  $("bigTotal").textContent=tot.total.toLocaleString();
+  const parts=[on.house&&"houses",on.apt&&"apartments",on.biz&&"businesses"].filter(Boolean);
+  $("bigWhat").textContent=`${parts.length?parts.join(" + "):"nothing selected"} across ${zones.length} zone${zones.length===1?"":"s"}`+(on.apt?"":" · apartments excluded");
+  $("overlapNote").textContent=overlap?`Some zones overlap. ${overlap.toLocaleString()} mailboxes sit in more than one zone; they appear in each zone row but only once in the total.`:"";
+  draw(on);
+}
+
+/* ---------- map ---------- */
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+// view: centre in projected units (X = lon*k, Y = lat) and scale in px per degree of latitude
+const view={k:1,cx:0,cy:0,s:1,ready:false};
+let lastOn={house:true,apt:false,biz:true},rafId=0,zonesKey="";
+const M_PER_DEG=110570;
+function canvasSize(){
+  const cv=$("map"),dpr=window.devicePixelRatio||1;
+  const w=Math.max(1,Math.round(cv.clientWidth*dpr)),h=Math.max(1,Math.round(cv.clientHeight*dpr));
+  if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
+  return {W:w,H:h,dpr};
+}
+function fitView(){
+  if(!zones.length)return;
+  const {W,H,dpr}=canvasSize();
+  const b=mergeBBox(zones.map(z=>z.bbox));
+  view.k=Math.cos((b[1]+b[3])/2*Math.PI/180);
+  view.cx=(b[0]+b[2])/2*view.k;view.cy=(b[1]+b[3])/2;
+  const pad=30*dpr;
+  view.s=Math.min((W-2*pad)/(((b[2]-b[0])*view.k)||1e-6),(H-2*pad)/((b[3]-b[1])||1e-6));
+  view.ready=true;
+}
+function requestDraw(){if(!rafId)rafId=requestAnimationFrame(()=>{rafId=0;render()})}
+function draw(on){
+  lastOn=on;
+  const key=baseZones.map(z=>z.name+z.bbox.join()).join("|");
+  if(key!==zonesKey||!view.ready){zonesKey=key;fitView()}
+  requestDraw();
+}
+function zoomAt(f,px,py){
+  const {W,H}=canvasSize();
+  const ns=Math.min(Math.max(view.s*f,200),M_PER_DEG*12);f=ns/view.s;
+  if(px==null){px=W/2;py=H/2}
+  const wx=view.cx+(px-W/2)/view.s,wy=view.cy-(py-H/2)/view.s;
+  view.s=ns;view.cx=wx-(px-W/2)/view.s;view.cy=wy+(py-H/2)/view.s;
+  requestDraw();
+}
+function render(){
+  const cv=$("map"),ctx=cv.getContext("2d");
+  const {W,H,dpr}=canvasSize();
+  const on=lastOn,k=view.k,s=view.s;
+  const X=lon=>(lon*k-view.cx)*s+W/2,Y=lat=>H/2-(lat-view.cy)*s;
+  // visible world bounds for culling
+  const vb=[(view.cx-W/2/s)/k,view.cy-H/2/s,(view.cx+W/2/s)/k,view.cy+H/2/s];
+  const vis=b=>!(b[2]<vb[0]||b[0]>vb[2]||b[3]<vb[1]||b[1]>vb[3]);
+  const pxm=s/M_PER_DEG; // pixels per metre
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle=css("--land");ctx.fillRect(0,0,W,H);
+  if(!zones.length)return;
+  ctx.lineJoin="round";ctx.lineCap="round";
+  const path=pts=>{ctx.beginPath();pts.forEach(([x,y],i)=>i?ctx.lineTo(X(x),Y(y)):ctx.moveTo(X(x),Y(y)))};
+  // areas
+  for(const a of basemap.areas){if(!vis(a.bbox))continue;path(a.ring);ctx.closePath();ctx.fillStyle=css(a.kind==="water"?"--water":"--park");ctx.fill()}
+  // roads: casing then fill, minor first
+  const widthM={service:4,minor:8,mid:11,major:15};
+  const order=["service","minor","mid","major"];
+  const visRoads=basemap.roads.filter(r=>r.kind!=="rail"&&vis(r.bbox));
+  for(const pass of ["case","fill"])for(const kind of order){
+    const w=Math.max(kind==="service"?0.5:kind==="minor"?0.9:1.6,widthM[kind]*pxm)*(pass==="case"?1:0.72);
+    if(kind==="service"&&pxm<0.25)continue;
+    ctx.lineWidth=pass==="case"?w+1.4*dpr*Math.min(1,pxm*2):w;
+    ctx.strokeStyle=pass==="case"?css("--road-case"):(kind==="major"||kind==="mid")?css("--road-major"):css("--road");
+    if(pass==="case"&&pxm<0.15)continue;
+    for(const r of visRoads){if(r.kind!==kind)continue;path(r.pts);ctx.stroke()}
+  }
+  ctx.setLineDash([6*dpr,5*dpr]);ctx.lineWidth=Math.max(1.2*dpr,3*pxm);ctx.strokeStyle=css("--rail");
+  for(const r of basemap.roads){if(r.kind!=="rail"||!vis(r.bbox))continue;path(r.pts);ctx.stroke()}
+  ctx.setLineDash([]);
+  // zones
+  ctx.fillStyle=css("--zone-fill");ctx.strokeStyle=css("--zone");ctx.lineWidth=2.2*dpr;
+  for(const z of zones){
+    if(!vis(z.bbox))continue;
+    ctx.beginPath();
+    for(const p of z.polys)for(const r of p){r.forEach(([x,y],i)=>i?ctx.lineTo(X(x),Y(y)):ctx.moveTo(X(x),Y(y)));ctx.closePath()}
+    ctx.fill("evenodd");ctx.stroke();
+  }
+  // address points
+  const col={house:css("--house"),apt:css("--apt"),biz:css("--biz")};
+  const rad=Math.min(9*dpr,Math.max(1.6*dpr,4*pxm));
+  const ring=css("--surface");
+  for(const pass of [0,1])for(const r of records){
+    const active=r.z>=0&&on[r.cls];if((pass===1)!==active)continue;
+    const px=X(r.lon),py=Y(r.lat);if(px<-10||px>W+10||py<-10||py>H+10)continue;
+    ctx.globalAlpha=active?1:.25;ctx.fillStyle=col[r.cls];
+    ctx.beginPath();
+    if(r.cls==="apt"&&r.w>1){const q=rad*1.5;ctx.rect(px-q,py-q,2*q,2*q)}else ctx.arc(px,py,rad,0,Math.PI*2);
+    ctx.fill();
+    if(active&&rad>3*dpr){ctx.lineWidth=1*dpr;ctx.strokeStyle=ring;ctx.stroke()}
+  }
+  ctx.globalAlpha=1;
+  // street names
+  if(pxm>0.45){
+    ctx.font=`500 ${Math.round(11*dpr)}px ${css("--body")}`;ctx.textAlign="center";ctx.textBaseline="middle";
+    const used=new Set(),cell=140*dpr;
+    for(const r of visRoads){
+      if(!r.name)continue;
+      let best=null,bl=0;
+      for(let i=1;i<r.pts.length;i++){const x1=X(r.pts[i-1][0]),y1=Y(r.pts[i-1][1]),x2=X(r.pts[i][0]),y2=Y(r.pts[i][1]);const l=Math.hypot(x2-x1,y2-y1);if(l>bl){bl=l;best=[x1,y1,x2,y2]}}
+      if(!best)continue;
+      const tw=ctx.measureText(r.name).width;if(bl<tw+12*dpr)continue;
+      const mx=(best[0]+best[2])/2,my=(best[1]+best[3])/2;if(mx<0||mx>W||my<0||my>H)continue;
+      const keyc=r.name+"|"+Math.floor(mx/cell)+"|"+Math.floor(my/cell);if(used.has(keyc))continue;used.add(keyc);
+      let ang=Math.atan2(best[3]-best[1],best[2]-best[0]);if(ang>Math.PI/2)ang-=Math.PI;if(ang<-Math.PI/2)ang+=Math.PI;
+      ctx.save();ctx.translate(mx,my);ctx.rotate(ang);
+      ctx.lineWidth=3*dpr;ctx.strokeStyle=css("--land");ctx.strokeText(r.name,0,0);
+      ctx.fillStyle=css("--label");ctx.fillText(r.name,0,0);ctx.restore();
+    }
+  }
+  // zone names
+  const fs=Math.round(Math.min(22,Math.max(12,pxm*30))*dpr);
+  ctx.font=`700 ${fs}px ${css("--display")}`;ctx.textAlign="center";ctx.textBaseline="middle";
+  for(const z of zones){
+    const big=z.polys.reduce((a,p)=>p[0].length>a[0].length?p:a);const[cx,cy]=centroid(big[0]);
+    const px=X(cx),py=Y(cy);if(px<-50||px>W+50||py<-20||py>H+20)continue;
+    ctx.lineWidth=4*dpr;ctx.strokeStyle=css("--surface");ctx.strokeText(z.name,px,py);ctx.fillStyle=css("--zone");ctx.fillText(z.name,px,py);
+  }
+  if(!basemap.roads.length&&!demo){
+    ctx.font=`500 ${Math.round(12*dpr)}px ${css("--body")}`;ctx.textAlign="left";ctx.fillStyle=css("--label");
+    ctx.fillText("Streets appear once address data is loaded",12*dpr,18*dpr);
+  }
+}
+// interaction
+(function(){
+  const cv=$("map"),pts=new Map();let pinch=null;
+  const pos=e=>{const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;return [(e.clientX-r.left)*d,(e.clientY-r.top)*d]};
+  cv.addEventListener("wheel",e=>{e.preventDefault();const[x,y]=pos(e);zoomAt(Math.exp(-e.deltaY*(e.deltaMode?0.05:0.0018)),x,y)},{passive:false});
+  cv.addEventListener("pointerdown",e=>{cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,pos(e));cv.classList.add("drag");$("mapHint").hidden=true;
+    if(pts.size===2){const[a,b]=[...pts.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])}}});
+  cv.addEventListener("pointermove",e=>{
+    if(!pts.has(e.pointerId))return;const p=pos(e),prev=pts.get(e.pointerId);pts.set(e.pointerId,p);
+    if(pts.size===1){view.cx-=(p[0]-prev[0])/view.s;view.cy+=(p[1]-prev[1])/view.s;requestDraw()}
+    else if(pts.size===2&&pinch){const[a,b]=[...pts.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);
+      const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+      view.cx-=((p[0]-prev[0])/2)/view.s;view.cy+=((p[1]-prev[1])/2)/view.s;
+      if(pinch.d>0)zoomAt(d/pinch.d,mx,my);pinch.d=d}
+  });
+  const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!pts.size)cv.classList.remove("drag")};
+  cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
+  cv.addEventListener("dblclick",e=>{const[x,y]=pos(e);zoomAt(2,x,y)});
+  cv.addEventListener("keydown",e=>{
+    const step=60*(window.devicePixelRatio||1)/view.s;
+    if(e.key==="+"||e.key==="=")zoomAt(1.4);else if(e.key==="-")zoomAt(1/1.4);
+    else if(e.key==="ArrowLeft")view.cx-=step;else if(e.key==="ArrowRight")view.cx+=step;
+    else if(e.key==="ArrowUp")view.cy+=step;else if(e.key==="ArrowDown")view.cy-=step;else return;
+    e.preventDefault();requestDraw();
+  });
+  $("zIn").addEventListener("click",()=>zoomAt(1.6));
+  $("zOut").addEventListener("click",()=>zoomAt(1/1.6));
+  $("zFit").addEventListener("click",()=>{fitView();requestDraw()});
+  let lastW=0;
+  if(window.ResizeObserver)new ResizeObserver(()=>{const w=cv.clientWidth;if(!view.ready||!lastW){lastW=w;fitView()}else if(w!==lastW){const f=w/lastW;lastW=w;view.s*=f}requestDraw()}).observe(cv);
+})();
+
+/* ---------- zones ---------- */
+let baseZones=[];
+function setBaseZones(list){baseZones=list;zones=list.slice()}
+
+/* ---------- example data ---------- */
+function loadDemo(){
+  const L=-34.0,G=150.0;
+  const rect=(x0,y0,x1,y1)=>[[x0,y0],[x1,y0],[x1,y1],[x0,y1],[x0,y0]];
+  zones=[
+    {name:"Example zone 1",polys:[[[[G,L],[G+.010,L+.0005],[G+.0105,L+.0085],[G+.002,L+.009],[G-.001,L+.004],[G,L]]]]},
+    {name:"Example zone 2",polys:[[rect(G+.0105,L+.001,G+.019,L+.0075)]]},
+  ];zones.forEach(z=>z.bbox=mergeBBox(z.polys.map(p=>ringBBox(p[0]))));setBaseZones(zones);
+  resetBase();let n=1;
+  const ys=[],xs=[];
+  for(let y=L-.0015;y<L+.01;y+=.0011)ys.push(+(y+.00055).toFixed(7));
+  for(let x=G-.002;x<G+.021;x+=.0042)xs.push(+x.toFixed(7));
+  // streets share a vertex at every crossing, like real map data
+  ys.forEach(y=>addBase(null,"minor",{name:"Example Street "+(n++)},[[[G-.003,y],...xs.map(x=>[x,y]),[G+.021,y]]]));
+  xs.forEach((x,i)=>addBase(null,i===2?"major":"minor",{name:i===2?"Example Road":"Example Avenue "+(i+1)},[[[x,L-.002],...ys.map(y=>[x,y]),[x,L+.0105]]]));
+  // a few cul-de-sacs branching off the streets
+  [[1,0],[3,2],[5,1],[6,3],[4,4]].forEach(([yi,xi],c)=>{const y=ys[yi],x=+(xs[xi]+.0021).toFixed(7);if(y==null||x>G+.02)return;
+    ys[yi]=y;addBase(null,"minor",{name:"Example Close "+(c+1)},[[[x,y],[x,y+.00045]]]);
+    // split the street at the junction so the close joins it
+    const st=basemap.roads.find(r=>r.name==="Example Street "+(yi+1));if(st){const k=st.pts.findIndex(p=>p[0]>x);if(k>0)st.pts.splice(k,0,[x,y])}});
+  addBase(null,"park",{},[[[G+.012,L+.0075],[G+.016,L+.0075],[G+.016,L+.0095],[G+.012,L+.0095]]]);
+  // example letterboxes: both sides of each street, set back about 20 m
+  let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  records=[];
+  const put=(lon,lat)=>{const v=rnd();
+    if(v<.05)records.push({lat,lon,cls:"apt",w:4+Math.floor(rnd()*20)});
+    else if(v<.10)records.push({lat,lon,cls:"apt",w:1});
+    else if(v<.15)records.push({lat,lon,cls:"biz",w:1});
+    else if(v<.92)records.push({lat,lon,cls:"house",w:1})};
+  ys.forEach(y=>{for(let x=G-.0025;x<G+.0205;x+=.00058){if(xs.some(v=>Math.abs(v-x)<.00025))continue;for(const sd of[1,-1])put(x+(rnd()-.5)*.0001,y+sd*(.00017+rnd()*.00004))}});
+  basemap.roads.filter(r=>/Close/.test(r.name)).forEach(r=>{const[x,y]=r.pts[0];for(let t=.00012;t<.00045;t+=.00015)for(const sd of[1,-1])put(x+sd*.00017,y+t)});
+  demo=true;updateQuery();count();
+}
+
+/* ---------- wiring ---------- */
+function setStatus(id,msg,kind){const el=$(id);el.textContent=msg;el.className="status"+(kind?" "+kind:"")}
+async function handleZone(file){
+  if(!file)return;setStatus("zoneStatus","Reading "+file.name+"…");
+  try{
+    setBaseZones(await readZoneFile(file));doneParts.clear();
+    if(demo){records=[];resetBase();demo=false;$("demoBanner").textContent="Zones loaded. Use step 2 to download and load the addresses inside them.";setStatus("addrStatus","No address data yet")}
+    setStatus("zoneStatus",`${zones.length} zone${zones.length>1?"s":""} from ${file.name}: ${zones.map(z=>z.name).join(", ")}`,"ok");
+    updateQuery();count();
+  }catch(e){setStatus("zoneStatus",e.message,"err")}
+}
+const seenRec=new Set();let loadedFiles=[];
+async function handleAddr(files){
+  files=Array.from(files||[]);if(!files.length)return;
+  if(demo){demo=false;setBaseZones([]);records=[];seenRec.clear();resetBase();updateQuery();setStatus("zoneStatus","Example zones cleared. Load your KML/KMZ.","err")}
+  const errs=[];let added=0;
+  for(const file of files){
+    setStatus("addrStatus","Reading "+file.name+"…");
+    try{
+      const recs=await readAddrFile(file);
+      if(!recs.length)throw new Error("no addresses in it");
+      for(const r of recs){const k=r.cls+"|"+r.lat.toFixed(6)+"|"+r.lon.toFixed(6)+"|"+r.w;if(seenRec.has(k))continue;seenRec.add(k);records.push(r);added++}
+      loadedFiles.push(file.name);
+    }catch(e){errs.push(file.name+": "+e.message)}
+  }
+  $("demoBanner").hidden=true;
+  count();
+  const inside=records.filter(r=>r.z>=0).length;
+  const msg=`${loadedFiles.length} file${loadedFiles.length===1?"":"s"} loaded, ${records.length.toLocaleString()} points (${added.toLocaleString()} new); ${inside.toLocaleString()} inside your zones`;
+  setStatus("addrStatus",errs.length?msg+". Problem with "+errs.join("; "):msg,errs.length||!inside?"err":"ok");
+}
+function wireDrop(dropId,inputId,fn){
+  const d=$(dropId),inp=$(inputId);
+  inp.addEventListener("change",async()=>{const f=Array.from(inp.files);await fn(f);inp.value=""});
+  ["dragenter","dragover"].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();d.classList.add("over")}));
+  ["dragleave","drop"].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();d.classList.remove("over")}));
+  d.addEventListener("drop",e=>fn(Array.from(e.dataTransfer.files)));
+}
+wireDrop("zoneDrop","zoneFile",f=>handleZone(f[0]));
+wireDrop("addrDrop","addrFile",handleAddr);
+["fHouse","fApt","fBiz"].forEach(id=>$(id).addEventListener("change",count));
+try{localStorage.removeItem("lbc-server");const sv=localStorage.getItem("lbc-server2");if(sv&&[...$("server").options].some(o=>o.value===sv))$("server").value=sv}catch(e){}
+$("server").addEventListener("change",()=>{try{localStorage.setItem("lbc-server2",$("server").value)}catch(e){}updateQuery()});
+$("reqList").addEventListener("click",e=>{
+  const a=e.target.closest("a[data-id]");
+  if(a){doneParts.add(a.dataset.id);a.classList.add("done");return}
+  const b=e.target.closest("button[data-copy]");if(!b)return;
+  const pq=partQueries.find(p=>p.id===b.dataset.copy);if(!pq)return;
+  const pre=$("queryText");pre.textContent=pq.q;
+  const ok=()=>{b.textContent="copied";setTimeout(()=>b.textContent="copy",1600)};
+  const fail=()=>{pre.closest("details").open=true;const r=document.createRange();r.selectNodeContents(pre);const s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent="see below"};
+  try{navigator.clipboard.writeText(pq.q).then(ok,fail)}catch(err){fail()}
+});
+$("dlAll").addEventListener("click",()=>{doneParts.add("all");$("dlAll").classList.add("done")});
+$("pasteLoad").addEventListener("click",async()=>{
+  const t=$("pasteBox").value.trim();
+  if(!t){setStatus("addrStatus","Paste the data into the box first.","err");return}
+  await handleAddr([new File([t],"pasted data.json")]);
+  $("pasteBox").value="";
+});
+$("clearAddr").addEventListener("click",()=>{records=[];seenRec.clear();resetBase();loadedFiles=[];setStatus("addrStatus","No address data yet");count()});
+
+function tableCSV(){
+  const on={house:$("fHouse").checked,apt:$("fApt").checked,biz:$("fBiz").checked};
+  const q=s=>/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  const lines=["Zone,Houses,Apartments,Businesses,Mailboxes"];
+  lastRows.forEach(r=>lines.push([q(r.name),r.house,r.apt,r.biz,r.total].join(",")));
+  lines.push("Total,"+[$("nHouse").textContent,$("nApt").textContent,$("nBiz").textContent,$("bigTotal").textContent].map(s=>s.replace(/,/g,"")).join(","));
+  lines.push(`Counted: ${[on.house&&"houses",on.apt&&"apartments",on.biz&&"businesses"].filter(Boolean).join(" + ")}`);
+  return lines.join("\n");
+}
+$("copyBtn").addEventListener("click",()=>{
+  const txt=tableCSV().replace(/,/g,"\t");
+  const done=()=>{$("copyBtn").textContent="Copied";setTimeout(()=>$("copyBtn").textContent="Copy table",1600)};
+  try{navigator.clipboard.writeText(txt).then(done,()=>{$("copyBtn").textContent="Copy blocked"})}catch(e){$("copyBtn").textContent="Copy blocked"}
+});
+let downloads=null;
+$("csvBtn").setAttribute("aria-disabled","true");
+if(window.claude&&claude.use)claude.use("downloads").then(d=>{downloads=d;if(d)$("csvBtn").removeAttribute("aria-disabled");else $("csvBtn").hidden=true}).catch(()=>{$("csvBtn").hidden=true});
+else $("csvBtn").removeAttribute("aria-disabled"); // running as a normal web page: plain browser download
+$("csvBtn").addEventListener("click",async()=>{
+  const blob=new Blob([tableCSV()],{type:"text/csv"});
+  if(downloads){try{await downloads.save({filename:"mailbox-count.csv",data:blob})}catch(e){}return}
+  if(window.claude&&claude.use)return;
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="mailbox-count.csv";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>requestDraw());
+new MutationObserver(()=>requestDraw()).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+if(document.fonts)document.fonts.ready.then(()=>requestDraw());
+
+loadDemo();
+})();
+</script>
+</body>
+</html>
