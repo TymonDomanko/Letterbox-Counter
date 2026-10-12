@@ -8,6 +8,8 @@
 <title>Letterbox Count</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 /* Layout: control rail (zones → addresses → filters) beside a working area of zone map + count sheet; stacks on phones */
@@ -61,24 +63,7 @@ h1 span{color:var(--accent)}
 .btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
 .row{display:flex;flex-wrap:wrap;gap:8px}
 details{font-size:13px} summary{cursor:pointer;color:var(--muted)}
-pre.q{font-family:var(--mono);font-size:11.5px;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px;overflow-x:auto;margin:8px 0 0;white-space:pre}
-.srv{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);font-weight:600}
-.srv select{font:500 14px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:8px}
-.reqlist{display:flex;flex-direction:column;gap:10px}
-.req{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:6px}
-.req .head{display:flex;justify-content:space-between;gap:8px;font-size:13.5px}
-.req .head b{font-weight:600;min-width:0;overflow-wrap:anywhere}
-.req .head span{color:var(--muted);font-family:var(--mono);font-size:12px;white-space:nowrap}
-.parts{display:flex;flex-wrap:wrap;gap:6px}
-.part{display:inline-flex}
-.part a,.part button{font:600 12.5px var(--body);padding:6px 9px;border:1px solid var(--ink);text-decoration:none;cursor:pointer}
-.part a{background:var(--ink);color:var(--bg);border-radius:5px 0 0 5px}
-.part a.done{background:var(--house);border-color:var(--house)}
-.part button{background:transparent;color:var(--muted);border-color:var(--line);border-left:0;border-radius:0 5px 5px 0}
-.part button:hover{color:var(--ink)}
 .btn.sm{padding:6px 10px;font-size:12.5px}
-textarea{width:100%;font:12px var(--mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:8px;resize:vertical}
-a.btn.done{background:var(--house);border-color:var(--house)}
 .filters{display:flex;flex-direction:column;gap:8px}
 .chk{display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer}
 .chk input{width:18px;height:18px;accent-color:var(--accent)}
@@ -94,14 +79,14 @@ a.btn.done{background:var(--house);border-color:var(--house)}
 .totalbar .what{color:var(--muted);font-size:13.5px;flex-basis:100%}
 .mapbox{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px;min-width:0}
 .mapwrap{position:relative}
-canvas{display:block;width:100%;height:clamp(340px,62vh,680px);max-width:100%;border-radius:4px;touch-action:none;cursor:grab;background:var(--land)}
-canvas.drag{cursor:grabbing}
-canvas:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.mapctl{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:4px}
-.mapctl button{width:36px;height:36px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:5px;font:700 18px var(--body);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.12)}
-.mapctl button.fit{font-size:11px;font-weight:600}
-.mapctl button:hover{border-color:var(--ink)}
-.maphint{position:absolute;left:10px;bottom:10px;font-size:11.5px;color:var(--label);background:color-mix(in srgb,var(--surface) 80%,transparent);padding:3px 7px;border-radius:4px;pointer-events:none}
+#map{height:clamp(360px,62vh,700px);border-radius:4px;background:var(--land);z-index:0}
+.leaflet-container{font-family:var(--body)}
+.leaflet-tooltip.zlabel{background:transparent;border:0;box-shadow:none;padding:0;font:700 13px var(--display);color:var(--zone);text-shadow:0 0 3px var(--surface),0 0 3px var(--surface),0 0 3px var(--surface)}
+.leaflet-tooltip.zlabel::before{display:none}
+.mapempty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:16px;z-index:500;pointer-events:none;font-weight:600;color:var(--ink)}
+.mapempty span{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 14px;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.progress{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.progress i{display:block;height:100%;width:4%;background:var(--accent);transition:width .4s}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--muted);padding:6px 6px 2px}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .tablewrap{background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow-x:auto}
@@ -123,52 +108,36 @@ tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
 <div class="wrap">
   <header>
     <h1>Letterbox <span>Count</span></h1>
-    <p class="tag">Count the mailboxes inside each delivery zone. Upload zones from Google Earth or My Maps, load the address points, and filter out apartments.</p>
+    <p class="tag">Count the mailboxes inside each delivery zone. Load your zones from Google Earth or My Maps and the addresses are fetched for you, with apartments filtered out.</p>
   </header>
 
   <div class="grid">
     <aside class="rail">
       <section class="step">
         <h2><span class="n">1</span>Zones</h2>
-        <p>KML or KMZ with one polygon per zone. The placemark name becomes the zone name.</p>
+        <p>KML or KMZ with one polygon per zone. The placemark name becomes the zone name. Your zones are remembered in this browser.</p>
         <label class="drop" id="zoneDrop">
           <input type="file" id="zoneFile" accept=".kml,.kmz">
           <strong>Choose KML / KMZ</strong>or drop it here
         </label>
-        <div class="status" id="zoneStatus">Example zones loaded</div>
+        <div class="status" id="zoneStatus">No zones loaded.</div>
+        <div class="row"><button class="btn ghost sm" id="forgetZones" type="button" hidden>Forget these zones</button></div>
       </section>
 
       <section class="step">
         <h2><span class="n">2</span>Address points</h2>
-        <p>Download the addresses for your zones from OpenStreetMap, then load the file here.</p>
-        <label class="srv" for="server">Data server
-          <select id="server">
-            <option value="https://overpass.private.coffee/api/interpreter">private.coffee (recommended)</option>
-            <option value="https://maps.mail.ru/osm/tools/overpass/api/interpreter">mail.ru</option>
-            <option value="https://overpass.kumi.systems/api/interpreter">kumi.systems</option>
-          </select>
-        </label>
-        <a class="btn" id="dlAll" href="#" target="_blank" rel="noopener noreferrer">Download addresses for all zones</a>
-        <p id="areaNote" style="font-size:12.5px"></p>
-        <p style="font-size:12.5px">A tab opens with the data as text (it can take a minute). Press Ctrl/Cmd + A then Ctrl/Cmd + C in that tab, and paste it into the box below. Saving it as a file and loading that also works.</p>
-        <textarea id="pasteBox" rows="3" placeholder="Paste the data here"></textarea>
-        <div class="row"><button class="btn sm" id="pasteLoad" type="button">Load pasted data</button></div>
-        <details id="splitBox">
-          <summary>Download timing out? Get it in smaller parts</summary>
-          <p style="margin-top:6px">Each part covers about 2 × 2 km. Load every part; overlaps are only counted once.</p>
-          <div id="reqList" class="parts" style="margin-top:8px"></div>
-        </details>
-        <label class="drop" id="addrDrop">
-          <input type="file" id="addrFile" accept=".json,.geojson,.csv,.txt,.psv" multiple>
-          <strong>Choose address files</strong>Select several at once; they're merged
-        </label>
-        <div class="status" id="addrStatus">Example addresses loaded</div>
-        <div class="row"><button class="btn ghost sm" id="clearAddr" type="button">Clear address data</button></div>
+        <p>Addresses inside your zones are fetched from OpenStreetMap automatically. A copy is kept for two weeks so the page opens quickly next time.</p>
+        <div class="progress" id="prog" hidden><i id="progBar"></i></div>
+        <div class="status" id="addrStatus">Load zones to fetch their addresses.</div>
+        <div class="row"><button class="btn sm" id="refreshBtn" type="button">Refresh address data</button></div>
         <details>
-          <summary>How the download works</summary>
-          <p style="margin-top:6px">The download button runs this query on the chosen server. Large areas can take a minute or two. You can also paste the query into <a href="https://overpass-turbo.eu/" target="_blank" rel="noopener">overpass-turbo.eu</a> to see it on a map, then use Export → raw OSM data.</p>
-          <pre class="q" id="queryText"></pre>
-          <p style="margin-top:6px">A CSV also works, such as a G-NAF extract. It needs latitude and longitude columns. Rows with a value in a <code>flat</code>, <code>unit</code> or <code>flat_number</code> column count as apartments.</p>
+          <summary>Use your own address file instead</summary>
+          <p style="margin-top:6px">A CSV with latitude and longitude columns (such as a G-NAF extract), GeoJSON, or Overpass JSON. It replaces the fetched data until you refresh. Rows with a value in a <code>flat</code>, <code>unit</code> or <code>flat_number</code> column count as apartments.</p>
+          <label class="drop" id="addrDrop" style="margin-top:8px">
+            <input type="file" id="addrFile" accept=".json,.geojson,.csv,.txt,.psv" multiple>
+            <strong>Choose address files</strong>Select several at once; they're merged
+          </label>
+          <div class="row" style="margin-top:8px"><button class="btn ghost sm" id="clearAddr" type="button">Clear address data</button></div>
         </details>
       </section>
 
@@ -184,8 +153,6 @@ tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
     </aside>
 
     <main class="main">
-      <div class="banner" id="demoBanner">Showing example zones and addresses. Upload your own zones to start.</div>
-
       <div class="totalbar">
         <span class="lbl">Total mailboxes</span>
         <span class="big" id="bigTotal">0</span>
@@ -194,19 +161,14 @@ tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
 
       <div class="mapbox">
         <div class="mapwrap">
-          <canvas id="map" tabindex="0" aria-label="Map of zones and address points. Drag to pan, scroll or pinch to zoom."></canvas>
-          <div class="mapctl">
-            <button type="button" id="zIn" aria-label="Zoom in">+</button>
-            <button type="button" id="zOut" aria-label="Zoom out">−</button>
-            <button type="button" id="zFit" class="fit" aria-label="Fit all zones">Fit</button>
-          </div>
-          <div class="maphint" id="mapHint">Drag to pan · scroll or pinch to zoom</div>
+          <div id="map" aria-label="Map of zones and address points"></div>
+          <div class="mapempty" id="mapEmpty"><span>Load a KML or KMZ of your zones to start.</span></div>
         </div>
         <div class="legend">
           <span><i class="sw h"></i>House</span>
           <span><i class="sw a"></i>Apartment</span>
           <span><i class="sw b"></i>Business</span>
-          <span style="opacity:.6">Faded points are filtered out or outside every zone. Squares are buildings with several units.</span>
+          <span style="opacity:.7">Click a dot to see its address. Faded dots are filtered out or outside every zone; larger dots are buildings with several units.</span>
         </div>
       </div>
 
@@ -225,7 +187,7 @@ tfoot td{border-bottom:0;font-weight:700;border-top:2px solid var(--ink)}
           <button class="btn" id="csvBtn" type="button">Export CSV</button>
         </div>
       </div>
-      <p class="note">OpenStreetMap address coverage varies by suburb. Check the map for gaps before relying on a count. Units without their own address in the data are counted once per building.</p>
+      <p class="note">OpenStreetMap address coverage varies by suburb. Check the map for streets without dots before relying on a count. Units without their own address in the data are counted once per building.</p>
     </main>
   </div>
 </div>
@@ -240,7 +202,6 @@ const BIZ_KEYS=["shop","amenity","office","craft","healthcare","tourism","leisur
 
 let zones=[];        // {name, polys:[[outer,...holes]], bbox}
 let records=[];      // {lat,lon,cls:'house'|'apt'|'biz',w}
-let demo=true;
 let lastRows=[];
 
 /* ---------- geometry ---------- */
@@ -278,22 +239,12 @@ function parseKML(text){
   if(!out.length)throw new Error("No polygons found. Draw each zone as a shape (polygon), not a line or pin.");
   return out;
 }
-async function readZoneFile(file){
-  if(/\.kmz$/i.test(file.name)){
-    if(!window.JSZip)throw new Error("KMZ support didn't load. Try a .kml export instead.");
-    const zip=await JSZip.loadAsync(file);
-    const entry=Object.values(zip.files).find(f=>/\.kml$/i.test(f.name));
-    if(!entry)throw new Error("No .kml found inside that KMZ.");
-    return parseKML(await entry.async("string"));
-  }
-  return parseKML(await file.text());
-}
-
 /* ---------- address data ---------- */
 function isBiz(t){if(t.building&&BIZ_BUILDINGS.test(t.building))return true;return BIZ_KEYS.some(k=>t[k]&&t[k]!=="no")}
 function flatsOf(t){const v=parseInt(t["building:flats"]||t["addr:flats"]&&!/[-;,]/.test(t["addr:flats"])&&t["addr:flats"],10);if(v>0&&v<2000)return v;
   const r=(t["addr:flats"]||"").match(/^(\d+)\s*-\s*(\d+)$/);if(r){const n=+r[2]-+r[1]+1;if(n>0&&n<2000)return n}return 0}
 
+function addrLabel(t){const n=t["addr:housenumber"];if(n)return (t["addr:unit"]?t["addr:unit"]+"/":"")+n+(t["addr:street"]?" "+t["addr:street"]:"");return t.name||t["addr:street"]||""}
 // features: {lat,lon,tags,ring|null}
 function classifyOSM(features){
   const apts=[],addrs=[];
@@ -308,49 +259,26 @@ function classifyOSM(features){
     const t=f.tags;
     const key=[t["addr:unit"]||"",t["addr:housenumber"],t["addr:street"]||(f.lat.toFixed(4)+","+f.lon.toFixed(4))].join("|").toLowerCase().replace(/\s+/g," ");
     if(seen.has(key))continue;seen.add(key);
-    if(isBiz(t)){out.push({lat:f.lat,lon:f.lon,cls:"biz",w:1});continue}
+    const label=addrLabel(t)+(t.name&&t["addr:housenumber"]?" ("+t.name+")":"");
+    if(isBiz(t)){out.push({lat:f.lat,lon:f.lon,cls:"biz",w:1,label});continue}
     let host=null;
     for(const a of apts){if(a.bbox&&f.lon>=a.bbox[0]&&f.lon<=a.bbox[2]&&f.lat>=a.bbox[1]&&f.lat<=a.bbox[3]&&inRing(f.lon,f.lat,a.ring)){host=a;break}}
     const unitish=!!t["addr:unit"]||/\//.test(t["addr:housenumber"]);
-    if(host){host.inside++;out.push({lat:f.lat,lon:f.lon,cls:"apt",w:host.flats?0:1});continue}
-    if(unitish){out.push({lat:f.lat,lon:f.lon,cls:"apt",w:1});continue}
+    if(host){host.inside++;out.push({lat:f.lat,lon:f.lon,cls:"apt",w:host.flats?0:1,label});continue}
+    if(unitish){out.push({lat:f.lat,lon:f.lon,cls:"apt",w:1,label});continue}
     const fl=flatsOf(t);
-    if(fl>1){out.push({lat:f.lat,lon:f.lon,cls:"apt",w:fl});continue}
-    out.push({lat:f.lat,lon:f.lon,cls:"house",w:1});
+    if(fl>1){out.push({lat:f.lat,lon:f.lon,cls:"apt",w:fl,label});continue}
+    out.push({lat:f.lat,lon:f.lon,cls:"house",w:1,label});
   }
   for(const a of apts){
     const w=a.flats?a.flats:(a.inside?0:1);
-    out.push({lat:a.lat,lon:a.lon,cls:"apt",w});
+    out.push({lat:a.lat,lon:a.lon,cls:"apt",w,label:(addrLabel(a.tags||{})||"Apartment building")+(a.flats?` · ${a.flats} units`:"")});
   }
   return out;
-}
-/* ---------- base map (streets, parks, water, rail) ---------- */
-let basemap={roads:[],areas:[]};const baseSeen=new Set();
-function resetBase(){basemap={roads:[],areas:[]};baseSeen.clear()}
-const MAJOR=/^(motorway|trunk|primary|secondary)(_link)?$/;
-function baseKind(t){
-  if(t["addr:housenumber"]||t.building)return null;
-  if(t.highway)return MAJOR.test(t.highway)?"major":/^(tertiary|tertiary_link)$/.test(t.highway)?"mid":t.highway==="service"?"service":"minor";
-  if(t.railway==="rail")return "rail";
-  if(t.leisure==="park")return "park";
-  if(t.natural==="water")return "water";
-  return null;
-}
-function addBase(id,kind,t,lines){
-  if(id&&baseSeen.has(id))return;if(id)baseSeen.add(id);
-  if(kind==="park"||kind==="water"){for(const r of lines)if(r.length>=3)basemap.areas.push({kind,ring:r,bbox:ringBBox(r)})}
-  else for(const r of lines)if(r.length>=2)basemap.roads.push({kind,name:t.name||"",pts:r,bbox:ringBBox(r)});
 }
 function fromOverpass(j){
   const feats=[];
   for(const e of j.elements||[]){
-    const bk=baseKind(e.tags||{});
-    if(bk){
-      let lines=[];
-      if(e.geometry)lines=[e.geometry.filter(Boolean).map(p=>[p.lon,p.lat])];
-      else if(e.members)lines=e.members.filter(m=>m.geometry&&(m.role==="outer"||m.role===""||bk!=="park")).map(m=>m.geometry.filter(Boolean).map(p=>[p.lon,p.lat]));
-      addBase(e.type+e.id,bk,e.tags,lines);continue;
-    }
     if(e.type==="node"&&e.lat!=null)feats.push({lat:e.lat,lon:e.lon,tags:e.tags||{},ring:null});
     else if(e.geometry&&e.geometry.length){const ring=e.geometry.filter(Boolean).map(p=>[p.lon,p.lat]);const[x,y]=centroid(ring);feats.push({lat:y,lon:x,tags:e.tags||{},ring:ring.length>=3?ring:null})}
     else if(e.center)feats.push({lat:e.center.lat,lon:e.center.lon,tags:e.tags||{},ring:null});
@@ -363,11 +291,6 @@ function fromGeoJSON(j){
   for(const f of j.features||[]){
     const g=f.geometry;if(!g)continue;
     const p=f.properties||{};const tags=p.tags&&typeof p.tags==="object"?p.tags:p;
-    const bk=baseKind(tags);
-    if(bk){
-      const c=g.type==="LineString"?[g.coordinates]:g.type==="MultiLineString"?g.coordinates:g.type==="Polygon"?[g.coordinates[0]]:g.type==="MultiPolygon"?g.coordinates.map(x=>x[0]):[];
-      addBase(p["@id"]||p.id||f.id,bk,tags,c);continue;
-    }
     let ring=null,pt=null;
     if(g.type==="Point")pt=g.coordinates;
     else if(g.type==="Polygon"){ring=g.coordinates[0];pt=centroid(ring)}
@@ -415,7 +338,7 @@ function unwrapHTML(text){
 async function readAddrFile(file){
   let text=await file.text();
   if(/^\s*</.test(text)&&!/^\s*<\?xml[\s\S]{0,200}<osm/i.test(text)){
-    if(/runtime error|too busy|rate_limited|Too Many Requests/i.test(text))throw new Error("That's an error page from the server, not data. Try again or pick another server.");
+    if(/runtime error|too busy|rate_limited|Too Many Requests/i.test(text))throw new Error("That's an error page from the server, not data. Try again later.");
     text=unwrapHTML(text);
   }
   const trimmed=text.trimStart();
@@ -430,17 +353,6 @@ async function readAddrFile(file){
   return fromCSV(text);
 }
 
-/* ---------- query links ---------- */
-function buildQuery(b){
-  const f=v=>v.toFixed(5);
-  return `[out:json][timeout:120][bbox:${f(b[1])},${f(b[0])},${f(b[3])},${f(b[2])}];
-nwr["building"~"^(apartments|flats|dormitory)$"]->.apt;
-.apt out geom qt;
-(nwr["addr:housenumber"]; - .apt;);
-out center tags qt;
-(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|pedestrian|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"];way["railway"="rail"];nwr["leisure"="park"];nwr["natural"="water"];);
-out geom qt;`;
-}
 // split an area into ~2 km tiles, keeping only tiles that touch a zone
 function areaParts(bbox,zs){
   const pad=0.0008,b=[bbox[0]-pad,bbox[1]-pad,bbox[2]+pad,bbox[3]+pad];
@@ -459,26 +371,6 @@ function tileTouches(t,z){
   for(let a=0;a<=4;a++)for(let c=0;c<=4;c++)if(inZone(t[0]+(t[2]-t[0])*a/4,t[1]+(t[3]-t[1])*c/4,z))return true;
   return z.polys.some(p=>p[0].some(([x,y])=>x>=t[0]&&x<=t[2]&&y>=t[1]&&y<=t[3]));
 }
-const doneParts=new Set();
-function updateQuery(){
-  const list=$("reqList");
-  if(!baseZones.length){list.innerHTML="";$("dlAll").setAttribute("aria-disabled","true");$("areaNote").textContent="";return}
-  $("dlAll").removeAttribute("aria-disabled");
-  const srv=$("server").value;
-  const {parts,km2,all}=areaParts(mergeBBox(baseZones.map(z=>z.bbox)),baseZones);
-  const qAll=buildQuery(all);
-  $("dlAll").href=srv+"?data="+encodeURIComponent(qAll);
-  $("dlAll").classList.toggle("done",doneParts.has("all"));
-  $("areaNote").textContent=`One request covering about ${km2<10?km2.toFixed(1):Math.round(km2)} km² around your ${baseZones.length} zone${baseZones.length>1?"s":""}.`+(km2>60?" That's a large area; if it times out, use the smaller parts below.":"");
-  partQueries=[{id:"all",q:qAll}];
-  list.innerHTML=parts.map((t,pi)=>{
-    const q=buildQuery(t),id="p"+pi;partQueries.push({id,q});
-    return `<span class="part"><a href="${srv}?data=${encodeURIComponent(q)}" target="_blank" rel="noopener noreferrer" data-id="${id}" class="${doneParts.has(id)?"done":""}">Part ${pi+1}</a><button type="button" data-copy="${id}" aria-label="Copy query for part ${pi+1}">copy</button></span>`;
-  }).join("");
-  $("queryText").textContent=qAll;
-}
-let partQueries=[];
-
 /* ---------- counting ---------- */
 function count(){
   const on={house:$("fHouse").checked,apt:$("fApt").checked,biz:$("fBiz").checked};
@@ -501,229 +393,196 @@ function count(){
   const parts=[on.house&&"houses",on.apt&&"apartments",on.biz&&"businesses"].filter(Boolean);
   $("bigWhat").textContent=`${parts.length?parts.join(" + "):"nothing selected"} across ${zones.length} zone${zones.length===1?"":"s"}`+(on.apt?"":" · apartments excluded");
   $("overlapNote").textContent=overlap?`Some zones overlap. ${overlap.toLocaleString()} mailboxes sit in more than one zone; they appear in each zone row but only once in the total.`:"";
-  draw(on);
+  drawMap(on);
+}
+
+/* ---------- fetching addresses from OpenStreetMap ---------- */
+const SERVERS=[
+  "https://overpass.private.coffee/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter"
+];
+const CACHE_DAYS=14;
+function buildQuery(b){
+  const f=v=>v.toFixed(5);
+  return `[out:json][timeout:120][bbox:${f(b[1])},${f(b[0])},${f(b[3])},${f(b[2])}];
+nwr["building"~"^(apartments|flats|dormitory)$"]->.apt;
+.apt out geom qt;
+(nwr["addr:housenumber"]; - .apt;);
+out center tags qt;`;
+}
+class TooBig extends Error{}
+// try each server in turn; a busy or failing server just moves on to the next
+async function overpass(q){
+  let last=null;
+  for(const url of SERVERS){
+    const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),130000);
+    try{
+      const res=await fetch(url,{method:"POST",body:new URLSearchParams({data:q}),signal:ctrl.signal});
+      if(!res.ok){last=new Error(`${new URL(url).host} answered ${res.status}`);continue}
+      const j=await res.json();
+      if(j.remark&&/timed out|out of memory|run out of memory/i.test(j.remark))throw new TooBig(j.remark);
+      return j;
+    }catch(e){
+      if(e instanceof TooBig)throw e;
+      last=e.name==="AbortError"?new Error("the request timed out"):e;
+    }finally{clearTimeout(timer)}
+  }
+  throw last||new Error("no data server answered");
+}
+// small IndexedDB store so repeat visits load instantly
+const store={
+  db:null,
+  open(){if(this.db)return this.db;this.db=new Promise((res,rej)=>{const r=indexedDB.open("letterbox-count",1);r.onupgradeneeded=()=>r.result.createObjectStore("q");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});return this.db},
+  async get(k){try{const db=await this.open();return await new Promise(res=>{const r=db.transaction("q").objectStore("q").get(k);r.onsuccess=()=>res(r.result||null);r.onerror=()=>res(null)})}catch(e){return null}},
+  async set(k,v){try{const db=await this.open();await new Promise(res=>{const tx=db.transaction("q","readwrite");tx.objectStore("q").put(v,k);tx.oncomplete=tx.onerror=()=>res()})}catch(e){}}
+};
+const seenRec=new Set();
+function addRecords(recs){let n=0;for(const r of recs){const k=r.cls+"|"+r.lat.toFixed(6)+"|"+r.lon.toFixed(6)+"|"+r.w;if(seenRec.has(k))continue;seenRec.add(k);records.push(r);n++}return n}
+function progress(f){const p=$("prog");if(f==null){p.hidden=true;return}p.hidden=false;$("progBar").style.width=Math.round(Math.min(1,Math.max(0.04,f))*100)+"%"}
+let fetchRun=0;
+async function fetchAddresses(force){
+  if(!baseZones.length)return;
+  const run=++fetchRun;
+  $("refreshBtn").setAttribute("aria-disabled","true");
+  const {parts,km2,all}=areaParts(mergeBBox(baseZones.map(z=>z.bbox)),baseZones);
+  let oldest=Date.now(),allCached=true;
+  const getOne=async q=>{
+    if(!force){const c=await store.get(q);if(c&&c.j&&Date.now()-c.t<CACHE_DAYS*864e5){oldest=Math.min(oldest,c.t);return c.j}}
+    allCached=false;const j=await overpass(q);await store.set(q,{t:Date.now(),j});return j;
+  };
+  const getTile=async(b,depth)=>{
+    try{return [await getOne(buildQuery(b))]}
+    catch(e){if(depth>=2)throw e;const mx=(b[0]+b[2])/2,my=(b[1]+b[3])/2,out=[];
+      for(const t of [[b[0],b[1],mx,my],[mx,b[1],b[2],my],[b[0],my,mx,b[3]],[mx,my,b[2],b[3]]])out.push(...await getTile(t,depth+1));return out}
+  };
+  const results=[];
+  try{
+    progress(0.04);setStatus("addrStatus","Fetching addresses for your zones…");
+    const wq=buildQuery(all);
+    let useTiles=km2>30;
+    if(!useTiles&&!force){const c=await store.get(wq);if(c&&c.tiles)useTiles=true}
+    if(!useTiles){
+      try{results.push(await getOne(wq))}
+      catch(e){useTiles=true;await store.set(wq,{t:Date.now(),tiles:true})}
+    }
+    if(useTiles){
+      for(let i=0;i<parts.length;i++){
+        if(run!==fetchRun)return;
+        setStatus("addrStatus",`Fetching addresses, part ${i+1} of ${parts.length}…`);progress((i+0.3)/parts.length);
+        results.push(...await getTile(parts[i],0));
+      }
+    }
+  }catch(e){
+    if(run!==fetchRun)return;
+    progress(null);$("refreshBtn").removeAttribute("aria-disabled");
+    setStatus("addrStatus",`Couldn't fetch the addresses (${e.message}). The data servers may be busy; try Refresh in a few minutes, or load your own address file below.`,"err");
+    return;
+  }
+  if(run!==fetchRun)return;
+  records=[];seenRec.clear();
+  for(const j of results)addRecords(fromOverpass(j));
+  progress(null);$("refreshBtn").removeAttribute("aria-disabled");
+  count();
+  const inside=records.filter(r=>r.z>=0).length;
+  const when=allCached?` · saved copy from ${new Date(oldest).toLocaleDateString(undefined,{day:"numeric",month:"short"})}`:"";
+  setStatus("addrStatus",`${inside.toLocaleString()} addresses inside your zones (from OpenStreetMap)${when}`,inside?"ok":"err");
 }
 
 /* ---------- map ---------- */
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
-// view: centre in projected units (X = lon*k, Y = lat) and scale in px per degree of latitude
-const view={k:1,cx:0,cy:0,s:1,ready:false};
-let lastOn={house:true,apt:false,biz:true},rafId=0,zonesKey="";
-const M_PER_DEG=110570;
-function canvasSize(){
-  const cv=$("map"),dpr=window.devicePixelRatio||1;
-  const w=Math.max(1,Math.round(cv.clientWidth*dpr)),h=Math.max(1,Math.round(cv.clientHeight*dpr));
-  if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
-  return {W:w,H:h,dpr};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let map=null,tiles=null,zoneLayer=null,pointLayer=null,canvasR=null,zonesDrawnKey="",fitKey="";
+function isDark(){const t=document.documentElement.getAttribute("data-theme");if(t)return t==="dark";return window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches}
+function initMap(){
+  if(!window.L){$("mapEmpty").textContent="The map couldn't load. Counts still work.";return}
+  map=L.map("map",{preferCanvas:true,zoomSnap:0.5}).setView([-28,134],4);
+  canvasR=L.canvas({padding:0.5});
+  zoneLayer=L.layerGroup().addTo(map);pointLayer=L.layerGroup().addTo(map);
+  setTiles();
 }
-function fitView(){
-  if(!zones.length)return;
-  const {W,H,dpr}=canvasSize();
-  const b=mergeBBox(zones.map(z=>z.bbox));
-  view.k=Math.cos((b[1]+b[3])/2*Math.PI/180);
-  view.cx=(b[0]+b[2])/2*view.k;view.cy=(b[1]+b[3])/2;
-  const pad=30*dpr;
-  view.s=Math.min((W-2*pad)/(((b[2]-b[0])*view.k)||1e-6),(H-2*pad)/((b[3]-b[1])||1e-6));
-  view.ready=true;
+function setTiles(){
+  if(!map)return;if(tiles)map.removeLayer(tiles);
+  const style=isDark()?"dark_all":"rastertiles/voyager";
+  tiles=L.tileLayer(`https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`,{subdomains:"abcd",maxZoom:20,
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'}).addTo(map);
 }
-function requestDraw(){if(!rafId)rafId=requestAnimationFrame(()=>{rafId=0;render()})}
-function draw(on){
-  lastOn=on;
-  const key=baseZones.map(z=>z.name+z.bbox.join()).join("|");
-  if(key!==zonesKey||!view.ready){zonesKey=key;fitView()}
-  requestDraw();
-}
-function zoomAt(f,px,py){
-  const {W,H}=canvasSize();
-  const ns=Math.min(Math.max(view.s*f,200),M_PER_DEG*12);f=ns/view.s;
-  if(px==null){px=W/2;py=H/2}
-  const wx=view.cx+(px-W/2)/view.s,wy=view.cy-(py-H/2)/view.s;
-  view.s=ns;view.cx=wx-(px-W/2)/view.s;view.cy=wy+(py-H/2)/view.s;
-  requestDraw();
-}
-function render(){
-  const cv=$("map"),ctx=cv.getContext("2d");
-  const {W,H,dpr}=canvasSize();
-  const on=lastOn,k=view.k,s=view.s;
-  const X=lon=>(lon*k-view.cx)*s+W/2,Y=lat=>H/2-(lat-view.cy)*s;
-  // visible world bounds for culling
-  const vb=[(view.cx-W/2/s)/k,view.cy-H/2/s,(view.cx+W/2/s)/k,view.cy+H/2/s];
-  const vis=b=>!(b[2]<vb[0]||b[0]>vb[2]||b[3]<vb[1]||b[1]>vb[3]);
-  const pxm=s/M_PER_DEG; // pixels per metre
-  ctx.setTransform(1,0,0,1,0,0);
-  ctx.fillStyle=css("--land");ctx.fillRect(0,0,W,H);
-  if(!zones.length)return;
-  ctx.lineJoin="round";ctx.lineCap="round";
-  const path=pts=>{ctx.beginPath();pts.forEach(([x,y],i)=>i?ctx.lineTo(X(x),Y(y)):ctx.moveTo(X(x),Y(y)))};
-  // areas
-  for(const a of basemap.areas){if(!vis(a.bbox))continue;path(a.ring);ctx.closePath();ctx.fillStyle=css(a.kind==="water"?"--water":"--park");ctx.fill()}
-  // roads: casing then fill, minor first
-  const widthM={service:4,minor:8,mid:11,major:15};
-  const order=["service","minor","mid","major"];
-  const visRoads=basemap.roads.filter(r=>r.kind!=="rail"&&vis(r.bbox));
-  for(const pass of ["case","fill"])for(const kind of order){
-    const w=Math.max(kind==="service"?0.5:kind==="minor"?0.9:1.6,widthM[kind]*pxm)*(pass==="case"?1:0.72);
-    if(kind==="service"&&pxm<0.25)continue;
-    ctx.lineWidth=pass==="case"?w+1.4*dpr*Math.min(1,pxm*2):w;
-    ctx.strokeStyle=pass==="case"?css("--road-case"):(kind==="major"||kind==="mid")?css("--road-major"):css("--road");
-    if(pass==="case"&&pxm<0.15)continue;
-    for(const r of visRoads){if(r.kind!==kind)continue;path(r.pts);ctx.stroke()}
-  }
-  ctx.setLineDash([6*dpr,5*dpr]);ctx.lineWidth=Math.max(1.2*dpr,3*pxm);ctx.strokeStyle=css("--rail");
-  for(const r of basemap.roads){if(r.kind!=="rail"||!vis(r.bbox))continue;path(r.pts);ctx.stroke()}
-  ctx.setLineDash([]);
-  // zones
-  ctx.fillStyle=css("--zone-fill");ctx.strokeStyle=css("--zone");ctx.lineWidth=2.2*dpr;
-  for(const z of zones){
-    if(!vis(z.bbox))continue;
-    ctx.beginPath();
-    for(const p of z.polys)for(const r of p){r.forEach(([x,y],i)=>i?ctx.lineTo(X(x),Y(y)):ctx.moveTo(X(x),Y(y)));ctx.closePath()}
-    ctx.fill("evenodd");ctx.stroke();
-  }
-  // address points
-  const col={house:css("--house"),apt:css("--apt"),biz:css("--biz")};
-  const rad=Math.min(9*dpr,Math.max(1.6*dpr,4*pxm));
-  const ring=css("--surface");
-  for(const pass of [0,1])for(const r of records){
-    const active=r.z>=0&&on[r.cls];if((pass===1)!==active)continue;
-    const px=X(r.lon),py=Y(r.lat);if(px<-10||px>W+10||py<-10||py>H+10)continue;
-    ctx.globalAlpha=active?1:.25;ctx.fillStyle=col[r.cls];
-    ctx.beginPath();
-    if(r.cls==="apt"&&r.w>1){const q=rad*1.5;ctx.rect(px-q,py-q,2*q,2*q)}else ctx.arc(px,py,rad,0,Math.PI*2);
-    ctx.fill();
-    if(active&&rad>3*dpr){ctx.lineWidth=1*dpr;ctx.strokeStyle=ring;ctx.stroke()}
-  }
-  ctx.globalAlpha=1;
-  // street names
-  if(pxm>0.45){
-    ctx.font=`500 ${Math.round(11*dpr)}px ${css("--body")}`;ctx.textAlign="center";ctx.textBaseline="middle";
-    const used=new Set(),cell=140*dpr;
-    for(const r of visRoads){
-      if(!r.name)continue;
-      let best=null,bl=0;
-      for(let i=1;i<r.pts.length;i++){const x1=X(r.pts[i-1][0]),y1=Y(r.pts[i-1][1]),x2=X(r.pts[i][0]),y2=Y(r.pts[i][1]);const l=Math.hypot(x2-x1,y2-y1);if(l>bl){bl=l;best=[x1,y1,x2,y2]}}
-      if(!best)continue;
-      const tw=ctx.measureText(r.name).width;if(bl<tw+12*dpr)continue;
-      const mx=(best[0]+best[2])/2,my=(best[1]+best[3])/2;if(mx<0||mx>W||my<0||my>H)continue;
-      const keyc=r.name+"|"+Math.floor(mx/cell)+"|"+Math.floor(my/cell);if(used.has(keyc))continue;used.add(keyc);
-      let ang=Math.atan2(best[3]-best[1],best[2]-best[0]);if(ang>Math.PI/2)ang-=Math.PI;if(ang<-Math.PI/2)ang+=Math.PI;
-      ctx.save();ctx.translate(mx,my);ctx.rotate(ang);
-      ctx.lineWidth=3*dpr;ctx.strokeStyle=css("--land");ctx.strokeText(r.name,0,0);
-      ctx.fillStyle=css("--label");ctx.fillText(r.name,0,0);ctx.restore();
+const CLS_NAME={house:"House",apt:"Apartment / unit",biz:"Business"};
+function drawMap(on){
+  $("mapEmpty").hidden=!!zones.length;
+  if(!map)return;
+  const key=baseZones.map(z=>z.name+z.bbox.join()).join("|")+(isDark()?"d":"l");
+  if(key!==zonesDrawnKey){
+    const zk=key.slice(0,-1),refit=zk!==fitKey;fitKey=zk;
+    zonesDrawnKey=key;zoneLayer.clearLayers();
+    for(const z of zones){
+      const ll=z.polys.map(p=>p.map(r=>r.map(([x,y])=>[y,x])));
+      L.polygon(ll,{color:css("--zone"),weight:2,fillColor:css("--zone"),fillOpacity:.07,interactive:false}).addTo(zoneLayer);
+      const big=z.polys.reduce((a,p)=>p[0].length>a[0].length?p:a);const[cx,cy]=centroid(big[0]);
+      L.tooltip({permanent:true,direction:"center",className:"zlabel",interactive:false}).setLatLng([cy,cx]).setContent(esc(z.name)).addTo(zoneLayer);
     }
+    if(refit&&zones.length){const b=mergeBBox(zones.map(z=>z.bbox));map.fitBounds([[b[1],b[0]],[b[3],b[2]]],{padding:[24,24]})}
   }
-  // zone names
-  const fs=Math.round(Math.min(22,Math.max(12,pxm*30))*dpr);
-  ctx.font=`700 ${fs}px ${css("--display")}`;ctx.textAlign="center";ctx.textBaseline="middle";
-  for(const z of zones){
-    const big=z.polys.reduce((a,p)=>p[0].length>a[0].length?p:a);const[cx,cy]=centroid(big[0]);
-    const px=X(cx),py=Y(cy);if(px<-50||px>W+50||py<-20||py>H+20)continue;
-    ctx.lineWidth=4*dpr;ctx.strokeStyle=css("--surface");ctx.strokeText(z.name,px,py);ctx.fillStyle=css("--zone");ctx.fillText(z.name,px,py);
-  }
-  if(!basemap.roads.length&&!demo){
-    ctx.font=`500 ${Math.round(12*dpr)}px ${css("--body")}`;ctx.textAlign="left";ctx.fillStyle=css("--label");
-    ctx.fillText("Streets appear once address data is loaded",12*dpr,18*dpr);
+  pointLayer.clearLayers();
+  const col={house:css("--house"),apt:css("--apt"),biz:css("--biz")},ring=css("--surface");
+  for(const r of records){
+    const active=r.z>=0&&on[r.cls];
+    const m=L.circleMarker([r.lat,r.lon],{renderer:canvasR,radius:r.w>1?7:4.5,color:ring,weight:active?1:0,fillColor:col[r.cls],fillOpacity:active?.95:.22,opacity:active?1:0});
+    m.bindPopup(()=>`<strong>${esc(r.label||"Address")}</strong><br>${CLS_NAME[r.cls]}${r.w>1?` · ${r.w} mailboxes`:r.w===0?" · counted with its building":""}${r.z<0?"<br><em>Outside your zones</em>":on[r.cls]?"":"<br><em>Not counted (filtered out)</em>"}`);
+    pointLayer.addLayer(m);
   }
 }
-// interaction
-(function(){
-  const cv=$("map"),pts=new Map();let pinch=null;
-  const pos=e=>{const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;return [(e.clientX-r.left)*d,(e.clientY-r.top)*d]};
-  cv.addEventListener("wheel",e=>{e.preventDefault();const[x,y]=pos(e);zoomAt(Math.exp(-e.deltaY*(e.deltaMode?0.05:0.0018)),x,y)},{passive:false});
-  cv.addEventListener("pointerdown",e=>{cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,pos(e));cv.classList.add("drag");$("mapHint").hidden=true;
-    if(pts.size===2){const[a,b]=[...pts.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])}}});
-  cv.addEventListener("pointermove",e=>{
-    if(!pts.has(e.pointerId))return;const p=pos(e),prev=pts.get(e.pointerId);pts.set(e.pointerId,p);
-    if(pts.size===1){view.cx-=(p[0]-prev[0])/view.s;view.cy+=(p[1]-prev[1])/view.s;requestDraw()}
-    else if(pts.size===2&&pinch){const[a,b]=[...pts.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);
-      const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
-      view.cx-=((p[0]-prev[0])/2)/view.s;view.cy+=((p[1]-prev[1])/2)/view.s;
-      if(pinch.d>0)zoomAt(d/pinch.d,mx,my);pinch.d=d}
-  });
-  const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!pts.size)cv.classList.remove("drag")};
-  cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
-  cv.addEventListener("dblclick",e=>{const[x,y]=pos(e);zoomAt(2,x,y)});
-  cv.addEventListener("keydown",e=>{
-    const step=60*(window.devicePixelRatio||1)/view.s;
-    if(e.key==="+"||e.key==="=")zoomAt(1.4);else if(e.key==="-")zoomAt(1/1.4);
-    else if(e.key==="ArrowLeft")view.cx-=step;else if(e.key==="ArrowRight")view.cx+=step;
-    else if(e.key==="ArrowUp")view.cy+=step;else if(e.key==="ArrowDown")view.cy-=step;else return;
-    e.preventDefault();requestDraw();
-  });
-  $("zIn").addEventListener("click",()=>zoomAt(1.6));
-  $("zOut").addEventListener("click",()=>zoomAt(1/1.6));
-  $("zFit").addEventListener("click",()=>{fitView();requestDraw()});
-  let lastW=0;
-  if(window.ResizeObserver)new ResizeObserver(()=>{const w=cv.clientWidth;if(!view.ready||!lastW){lastW=w;fitView()}else if(w!==lastW){const f=w/lastW;lastW=w;view.s*=f}requestDraw()}).observe(cv);
-})();
+
+/* ---------- remembering zones and settings ---------- */
+const SAVE_KEY="lbc-zones",PREF_KEY="lbc-filters";
+function saveZones(name,text){try{localStorage.setItem(SAVE_KEY,JSON.stringify({name,text}))}catch(e){}}
+function loadSavedZones(){try{return JSON.parse(localStorage.getItem(SAVE_KEY)||"null")}catch(e){return null}}
+function saveFilters(){try{localStorage.setItem(PREF_KEY,JSON.stringify({h:$("fHouse").checked,a:$("fApt").checked,b:$("fBiz").checked}))}catch(e){}}
+function loadFilters(){try{const p=JSON.parse(localStorage.getItem(PREF_KEY)||"null");if(p){$("fHouse").checked=!!p.h;$("fApt").checked=!!p.a;$("fBiz").checked=!!p.b}}catch(e){}}
 
 /* ---------- zones ---------- */
 let baseZones=[];
 function setBaseZones(list){baseZones=list;zones=list.slice()}
-
-/* ---------- example data ---------- */
-function loadDemo(){
-  const L=-34.0,G=150.0;
-  const rect=(x0,y0,x1,y1)=>[[x0,y0],[x1,y0],[x1,y1],[x0,y1],[x0,y0]];
-  zones=[
-    {name:"Example zone 1",polys:[[[[G,L],[G+.010,L+.0005],[G+.0105,L+.0085],[G+.002,L+.009],[G-.001,L+.004],[G,L]]]]},
-    {name:"Example zone 2",polys:[[rect(G+.0105,L+.001,G+.019,L+.0075)]]},
-  ];zones.forEach(z=>z.bbox=mergeBBox(z.polys.map(p=>ringBBox(p[0]))));setBaseZones(zones);
-  resetBase();let n=1;
-  const ys=[],xs=[];
-  for(let y=L-.0015;y<L+.01;y+=.0011)ys.push(+(y+.00055).toFixed(7));
-  for(let x=G-.002;x<G+.021;x+=.0042)xs.push(+x.toFixed(7));
-  // streets share a vertex at every crossing, like real map data
-  ys.forEach(y=>addBase(null,"minor",{name:"Example Street "+(n++)},[[[G-.003,y],...xs.map(x=>[x,y]),[G+.021,y]]]));
-  xs.forEach((x,i)=>addBase(null,i===2?"major":"minor",{name:i===2?"Example Road":"Example Avenue "+(i+1)},[[[x,L-.002],...ys.map(y=>[x,y]),[x,L+.0105]]]));
-  // a few cul-de-sacs branching off the streets
-  [[1,0],[3,2],[5,1],[6,3],[4,4]].forEach(([yi,xi],c)=>{const y=ys[yi],x=+(xs[xi]+.0021).toFixed(7);if(y==null||x>G+.02)return;
-    ys[yi]=y;addBase(null,"minor",{name:"Example Close "+(c+1)},[[[x,y],[x,y+.00045]]]);
-    // split the street at the junction so the close joins it
-    const st=basemap.roads.find(r=>r.name==="Example Street "+(yi+1));if(st){const k=st.pts.findIndex(p=>p[0]>x);if(k>0)st.pts.splice(k,0,[x,y])}});
-  addBase(null,"park",{},[[[G+.012,L+.0075],[G+.016,L+.0075],[G+.016,L+.0095],[G+.012,L+.0095]]]);
-  // example letterboxes: both sides of each street, set back about 20 m
-  let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
-  records=[];
-  const put=(lon,lat)=>{const v=rnd();
-    if(v<.05)records.push({lat,lon,cls:"apt",w:4+Math.floor(rnd()*20)});
-    else if(v<.10)records.push({lat,lon,cls:"apt",w:1});
-    else if(v<.15)records.push({lat,lon,cls:"biz",w:1});
-    else if(v<.92)records.push({lat,lon,cls:"house",w:1})};
-  ys.forEach(y=>{for(let x=G-.0025;x<G+.0205;x+=.00058){if(xs.some(v=>Math.abs(v-x)<.00025))continue;for(const sd of[1,-1])put(x+(rnd()-.5)*.0001,y+sd*(.00017+rnd()*.00004))}});
-  basemap.roads.filter(r=>/Close/.test(r.name)).forEach(r=>{const[x,y]=r.pts[0];for(let t=.00012;t<.00045;t+=.00015)for(const sd of[1,-1])put(x+sd*.00017,y+t)});
-  demo=true;updateQuery();count();
+async function readZoneFile(file){
+  let text;
+  if(/\.kmz$/i.test(file.name)){
+    if(!window.JSZip)throw new Error("KMZ support didn't load. Try a .kml export instead.");
+    const zip=await JSZip.loadAsync(file);
+    const entry=Object.values(zip.files).find(f=>/\.kml$/i.test(f.name));
+    if(!entry)throw new Error("No .kml found inside that KMZ.");
+    text=await entry.async("string");
+  }else text=await file.text();
+  return {zones:parseKML(text),text};
 }
 
 /* ---------- wiring ---------- */
 function setStatus(id,msg,kind){const el=$(id);el.textContent=msg;el.className="status"+(kind?" "+kind:"")}
+function zoneSummary(name,extra){return `${baseZones.length} zone${baseZones.length>1?"s":""} from ${name}${extra||""}`}
 async function handleZone(file){
   if(!file)return;setStatus("zoneStatus","Reading "+file.name+"…");
   try{
-    setBaseZones(await readZoneFile(file));doneParts.clear();
-    if(demo){records=[];resetBase();demo=false;$("demoBanner").textContent="Zones loaded. Use step 2 to download and load the addresses inside them.";setStatus("addrStatus","No address data yet")}
-    setStatus("zoneStatus",`${zones.length} zone${zones.length>1?"s":""} from ${file.name}: ${zones.map(z=>z.name).join(", ")}`,"ok");
-    updateQuery();count();
+    const {zones:zs,text}=await readZoneFile(file);
+    setBaseZones(zs);saveZones(file.name,text);
+    records=[];seenRec.clear();
+    setStatus("zoneStatus",zoneSummary(file.name),"ok");$("forgetZones").hidden=false;
+    count();
+    fetchAddresses(false);
   }catch(e){setStatus("zoneStatus",e.message,"err")}
 }
-const seenRec=new Set();let loadedFiles=[];
 async function handleAddr(files){
   files=Array.from(files||[]);if(!files.length)return;
-  if(demo){demo=false;setBaseZones([]);records=[];seenRec.clear();resetBase();updateQuery();setStatus("zoneStatus","Example zones cleared. Load your KML/KMZ.","err")}
-  const errs=[];let added=0;
+  fetchRun++;progress(null);$("refreshBtn").removeAttribute("aria-disabled");
+  records=[];seenRec.clear();
+  const errs=[],ok=[];
   for(const file of files){
     setStatus("addrStatus","Reading "+file.name+"…");
-    try{
-      const recs=await readAddrFile(file);
-      if(!recs.length)throw new Error("no addresses in it");
-      for(const r of recs){const k=r.cls+"|"+r.lat.toFixed(6)+"|"+r.lon.toFixed(6)+"|"+r.w;if(seenRec.has(k))continue;seenRec.add(k);records.push(r);added++}
-      loadedFiles.push(file.name);
-    }catch(e){errs.push(file.name+": "+e.message)}
+    try{const recs=await readAddrFile(file);if(!recs.length)throw new Error("no addresses in it");addRecords(recs);ok.push(file.name)}
+    catch(e){errs.push(file.name+": "+e.message)}
   }
-  $("demoBanner").hidden=true;
   count();
   const inside=records.filter(r=>r.z>=0).length;
-  const msg=`${loadedFiles.length} file${loadedFiles.length===1?"":"s"} loaded, ${records.length.toLocaleString()} points (${added.toLocaleString()} new); ${inside.toLocaleString()} inside your zones`;
+  const msg=ok.length?`${inside.toLocaleString()} addresses inside your zones, from ${ok.join(", ")}`:"No address data loaded";
   setStatus("addrStatus",errs.length?msg+". Problem with "+errs.join("; "):msg,errs.length||!inside?"err":"ok");
 }
 function wireDrop(dropId,inputId,fn){
@@ -735,27 +594,11 @@ function wireDrop(dropId,inputId,fn){
 }
 wireDrop("zoneDrop","zoneFile",f=>handleZone(f[0]));
 wireDrop("addrDrop","addrFile",handleAddr);
-["fHouse","fApt","fBiz"].forEach(id=>$(id).addEventListener("change",count));
-try{localStorage.removeItem("lbc-server");const sv=localStorage.getItem("lbc-server2");if(sv&&[...$("server").options].some(o=>o.value===sv))$("server").value=sv}catch(e){}
-$("server").addEventListener("change",()=>{try{localStorage.setItem("lbc-server2",$("server").value)}catch(e){}updateQuery()});
-$("reqList").addEventListener("click",e=>{
-  const a=e.target.closest("a[data-id]");
-  if(a){doneParts.add(a.dataset.id);a.classList.add("done");return}
-  const b=e.target.closest("button[data-copy]");if(!b)return;
-  const pq=partQueries.find(p=>p.id===b.dataset.copy);if(!pq)return;
-  const pre=$("queryText");pre.textContent=pq.q;
-  const ok=()=>{b.textContent="copied";setTimeout(()=>b.textContent="copy",1600)};
-  const fail=()=>{pre.closest("details").open=true;const r=document.createRange();r.selectNodeContents(pre);const s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent="see below"};
-  try{navigator.clipboard.writeText(pq.q).then(ok,fail)}catch(err){fail()}
-});
-$("dlAll").addEventListener("click",()=>{doneParts.add("all");$("dlAll").classList.add("done")});
-$("pasteLoad").addEventListener("click",async()=>{
-  const t=$("pasteBox").value.trim();
-  if(!t){setStatus("addrStatus","Paste the data into the box first.","err");return}
-  await handleAddr([new File([t],"pasted data.json")]);
-  $("pasteBox").value="";
-});
-$("clearAddr").addEventListener("click",()=>{records=[];seenRec.clear();resetBase();loadedFiles=[];setStatus("addrStatus","No address data yet");count()});
+["fHouse","fApt","fBiz"].forEach(id=>$(id).addEventListener("change",()=>{saveFilters();count()}));
+$("refreshBtn").addEventListener("click",()=>{if(!baseZones.length){setStatus("addrStatus","Load your zones first.","err");return}fetchAddresses(true)});
+$("clearAddr").addEventListener("click",()=>{fetchRun++;progress(null);records=[];seenRec.clear();setStatus("addrStatus","Address data cleared. Use Refresh to fetch it again.");count()});
+$("forgetZones").addEventListener("click",()=>{try{localStorage.removeItem(SAVE_KEY)}catch(e){}fetchRun++;progress(null);setBaseZones([]);records=[];seenRec.clear();zonesDrawnKey="";fitKey="";
+  setStatus("zoneStatus","No zones loaded.");setStatus("addrStatus","Load zones to fetch their addresses.");$("forgetZones").hidden=true;count()});
 
 function tableCSV(){
   const on={house:$("fHouse").checked,apt:$("fApt").checked,biz:$("fBiz").checked};
@@ -771,21 +614,22 @@ $("copyBtn").addEventListener("click",()=>{
   const done=()=>{$("copyBtn").textContent="Copied";setTimeout(()=>$("copyBtn").textContent="Copy table",1600)};
   try{navigator.clipboard.writeText(txt).then(done,()=>{$("copyBtn").textContent="Copy blocked"})}catch(e){$("copyBtn").textContent="Copy blocked"}
 });
-let downloads=null;
-$("csvBtn").setAttribute("aria-disabled","true");
-if(window.claude&&claude.use)claude.use("downloads").then(d=>{downloads=d;if(d)$("csvBtn").removeAttribute("aria-disabled");else $("csvBtn").hidden=true}).catch(()=>{$("csvBtn").hidden=true});
-else $("csvBtn").removeAttribute("aria-disabled"); // running as a normal web page: plain browser download
-$("csvBtn").addEventListener("click",async()=>{
+$("csvBtn").addEventListener("click",()=>{
   const blob=new Blob([tableCSV()],{type:"text/csv"});
-  if(downloads){try{await downloads.save({filename:"mailbox-count.csv",data:blob})}catch(e){}return}
-  if(window.claude&&claude.use)return;
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="mailbox-count.csv";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 });
-window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>requestDraw());
-new MutationObserver(()=>requestDraw()).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
-if(document.fonts)document.fonts.ready.then(()=>requestDraw());
+const retheme=()=>{setTiles();zonesDrawnKey="";count()};
+window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",retheme);
+new MutationObserver(retheme).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
 
-loadDemo();
+/* ---------- start ---------- */
+initMap();
+loadFilters();
+const saved=loadSavedZones();
+if(saved&&saved.text){
+  try{setBaseZones(parseKML(saved.text));setStatus("zoneStatus",zoneSummary(saved.name," (remembered from last time)"),"ok");$("forgetZones").hidden=false;count();fetchAddresses(false)}
+  catch(e){count()}
+}else count();
 })();
 </script>
 </body>

@@ -7,20 +7,31 @@ A single-page web app that counts how many mailboxes (letterboxes) fall inside e
 ## What it does
 
 - **Zones from a KML or KMZ file.** Draw your zones as shapes in Google My Maps or Google Earth, export them, and load the file. Each shape becomes a zone, named after its placemark.
+- **Fetches addresses automatically.** As soon as zones are loaded, the addresses inside them are fetched from OpenStreetMap. Nothing to download or paste.
 - **Count per zone and in total.** Mailboxes that sit in two overlapping zones show up in both zone rows but are only counted once in the total.
 - **Filter by type.** Houses, apartments/units and businesses can each be switched on or off. Apartments are off by default.
-- **Street map with zoom and pan.** Your zones and every address point are drawn over streets, parks, water and rail. Use the scroll wheel or a pinch to zoom, and drag to pan.
+- **Map.** Zones and every address are drawn on a street map. Click a dot to see its address and how it was counted.
+- **Remembers your work.** Your zones and filter choices are kept in your browser. Fetched address data is cached for two weeks, so the page opens instantly next time. Use **Refresh address data** to fetch it fresh.
 - **Export.** Copy the table, or download it as CSV.
 
 ## How to use it
 
 1. Load your zones (`.kml` or `.kmz`).
-2. Click **Download addresses for all zones**. A tab opens with the data, which comes from OpenStreetMap through the Overpass API. Select all, copy, and paste it into the box in the app. You can also save it as a `.json` file and load that.
-   - If the download times out, use **Get it in smaller parts** and load each part.
-   - If a server is busy, choose another one from the **Data server** list.
+2. Wait a few seconds while the addresses are fetched. A progress bar shows how it's going.
 3. Tick which mailbox types to count. The table and map update straight away.
 
-You can also load a CSV with latitude/longitude columns, such as a G-NAF extract. Rows with a value in a `unit`, `flat` or `flat_number` column count as apartments.
+You can also use your own address data, under **Use your own address file instead**. It accepts a CSV with latitude/longitude columns (such as a G-NAF extract), GeoJSON, or Overpass JSON. Rows with a value in a `unit`, `flat` or `flat_number` column count as apartments.
+
+## How fetching works
+
+Addresses come from the [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API), which serves OpenStreetMap data. The app sends one request covering all your zones. If a server is busy or fails, it tries the next one in this list:
+
+1. overpass.private.coffee
+2. overpass-api.de
+3. maps.mail.ru
+4. overpass.kumi.systems
+
+If the area is too big for one request (or wider than about 30 km²), the app splits it into roughly 2 × 2 km parts automatically, splitting further if needed, and merges the results without double counting.
 
 ## How mailboxes are classified
 
@@ -32,8 +43,12 @@ You can also load a CSV with latitude/longitude columns, such as a G-NAF extract
 
 ## Accuracy
 
-OpenStreetMap address coverage varies from suburb to suburb. Check the map for streets with no points before you rely on a count. For a guaranteed-complete count, use a G-NAF extract as the address source.
+OpenStreetMap address coverage varies from suburb to suburb. Check the map for streets with no dots before you rely on a count. For a guaranteed-complete count, use a G-NAF extract as the address source.
 
 ## Running it locally
 
-It's a single HTML file with no build step. Open `index.html` in a browser, or serve the folder with any static web server.
+It's a single HTML file with no build step. Serve the folder with any static web server (for example `python3 -m http.server`) and open it in a browser. Map tiles come from CARTO, using OpenStreetMap data.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
