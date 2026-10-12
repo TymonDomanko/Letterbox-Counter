@@ -644,7 +644,9 @@ function loadFilters(){try{const p=JSON.parse(localStorage.getItem(PREF_KEY)||"n
 
 /* ---------- zones ---------- */
 let baseZones=[];
-function setBaseZones(list){baseZones=list;zones=list.slice()}
+// natural order: "Zone 2" before "Zone 10", "Zone 4a" before "Zone 4b"
+const byName=new Intl.Collator(undefined,{numeric:true,sensitivity:"base"});
+function setBaseZones(list){baseZones=list.slice().sort((a,b)=>byName.compare(a.name,b.name));zones=baseZones.slice()}
 async function readZoneFile(file){
   let text;
   if(/\.kmz$/i.test(file.name)){
